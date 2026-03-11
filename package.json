@@ -12,6 +12,9 @@
     "docs": "typedoc",
     "typecheck": "tsc --noEmit"
   },
+  "files": [
+    "dist/**/*"
+  ],
   "keywords": [
     "virtual-table",
     "canvas",
