@@ -1,0 +1,40 @@
+# 依赖
+node_modules/
+.pnpm-store/
+
+# 构建输出
+dist/
+build/
+lib/
+
+# 测试
+coverage/
+
+# 文档（如果用 typedoc 生成）
+docs/.vitepress/cache
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 日志
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# 临时文件
+*.tmp
+*.temp
+.cache/

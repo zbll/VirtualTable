@@ -1,0 +1,23 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "./index.ts"
+  ],
+  "out": "docs",
+  "name": "VirtualTable",
+  "includeVersion": true,
+  "readme": "README.md",
+  "excludePrivate": true,
+  "excludeProtected": false,
+  "plugin": [
+    "typedoc-github-theme"
+  ],
+  "theme": "typedoc-github-theme",
+  "navigationLinks": {
+    "GitHub": "https://github.com/your-repo/virtual-table"
+  },
+  "searchInComments": true,
+  "commentStyle": "JSDoc",
+  "treatWarningsAsErrors": false,
+  "treatValidationWarningsAsErrors": false
+}
