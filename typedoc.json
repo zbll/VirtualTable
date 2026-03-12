@@ -14,7 +14,7 @@
   ],
   "theme": "typedoc-github-theme",
   "navigationLinks": {
-    "GitHub": "https://github.com/your-repo/virtual-table"
+    "GitHub": "https://github.com/zbll/VirtualTable"
   },
   "searchInComments": true,
   "commentStyle": "JSDoc",

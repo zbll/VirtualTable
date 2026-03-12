@@ -5,11 +5,11 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && pnpm exec esbuild src/VirtualTable.ts --bundle --minify --format=esm --outfile=dist/index.js",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "docs": "typedoc",
+    "build:doc": "pnpm exec typedoc ./src",
     "typecheck": "tsc --noEmit"
   },
   "files": [
@@ -28,8 +28,10 @@
   "packageManager": "pnpm@10.26.0",
   "devDependencies": {
     "@types/node": "^20.10.0",
+    "esbuild": "^0.20.0",
     "jsdom": "^24.0.0",
-    "typedoc": "^0.25.0",
+    "typedoc": "^0.28.17",
+    "typedoc-github-theme": "^0.4.0",
     "typescript": "^5.3.0",
     "vitest": "^1.2.0"
   },

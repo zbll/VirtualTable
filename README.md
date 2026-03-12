@@ -15,17 +15,17 @@
 ## 安装
 
 ```bash
-pnpm add virtual-table
+pnpm add virtual-table-canvas
 # 或
-npm install virtual-table
+npm install virtual-table-canvas
 # 或
-yarn add virtual-table
+yarn add virtual-table-canvas
 ```
 
 ## 快速开始
 
 ```typescript
-import { VirtualTable, type TableColumn, type TableStyle } from 'virtual-table';
+import { VirtualTable, type TableColumn, type TableStyle } from 'virtual-table-canvas';
 
 // 创建 canvas 元素
 const canvas = document.getElementById('table') as HTMLCanvasElement;
