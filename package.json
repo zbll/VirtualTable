@@ -10,7 +10,11 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "build:doc": "pnpm exec typedoc ./src",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "patch": "pnpm version patch",
+    "minor": "pnpm version minor",
+    "major": "pnpm version major",
+    "publish": "pnpm publish --registry=https://registry.npmjs.org/"
   },
   "files": [
     "dist/**/*"
