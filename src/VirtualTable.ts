@@ -956,6 +956,7 @@ class VirtualTable {
     const horizontalPadding = paddingLeft + paddingRight;
     const contentHeight =
       headerHeight + this._length * rowHeight + verticalPadding;
+    // 先假设没有水平滚动条，判断是否有垂直滚动条
     const hasVScrollbar = contentHeight > canvasHeight;
 
     // 计算列宽
@@ -982,14 +983,14 @@ class VirtualTable {
     );
 
     // 计算滚动信息
-    const viewHeight = canvasHeight;
-    const maxScroll = Math.max(0, contentHeight - viewHeight);
     const viewWidth = hasVScrollbar
       ? canvasWidth - scrollbarWidth
       : canvasWidth;
     const hasHScrollbar = totalContentWidth > viewWidth;
-    const vScrollbarTrackHeight =
-      viewHeight - (hasHScrollbar ? scrollbarWidth : 0);
+    const horizontalScrollbarHeight = hasHScrollbar ? scrollbarWidth : 0;
+    const vScrollbarTrackHeight = canvasHeight - horizontalScrollbarHeight;
+    // 计算实际可见高度（考虑水平滚动条占用底部空间）
+    const maxScroll = Math.max(0, contentHeight - vScrollbarTrackHeight);
     const scrollbarHeight = Math.max(
       20,
       (vScrollbarTrackHeight / contentHeight) * vScrollbarTrackHeight,
@@ -1054,6 +1055,7 @@ class VirtualTable {
     const horizontalPadding = paddingLeft + paddingRight;
     const contentHeight =
       headerHeight + this._length * rowHeight + verticalPadding;
+    // 先假设没有水平滚动条，判断是否有垂直滚动条
     const hasVerticalScrollbar = contentHeight > canvasHeight;
 
     // 计算列宽
@@ -1099,11 +1101,12 @@ class VirtualTable {
       ? canvasWidth - scrollbarWidth
       : canvasWidth;
     const hasHorizontalScrollbar = totalContentWidth > viewWidth;
-    const tempViewHeight = canvasHeight;
-    const maxScroll = Math.max(0, contentHeight - tempViewHeight);
     const horizontalScrollbarHeight = hasHorizontalScrollbar
       ? scrollbarWidth
       : 0;
+    // 计算实际可见高度（考虑水平滚动条占用底部空间）
+    const tempViewHeight = canvasHeight - horizontalScrollbarHeight;
+    const maxScroll = Math.max(0, contentHeight - tempViewHeight);
     const contentWidth = viewWidth - horizontalPadding;
     const maxScrollLeft = Math.max(0, totalContentWidth - viewWidth);
     this.scrollLeft = Math.min(maxScrollLeft, this.scrollLeft);
@@ -1151,11 +1154,15 @@ class VirtualTable {
     const baseFont =
       this._style.font ??
       "14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    // 计算实际可视区域高度（减去水平滚动条占用的空间）
+    const visibleHeight =
+      layout.canvasHeight -
+      (layout.hasHorizontalScrollbar ? layout.horizontalScrollbarHeight : 0);
     const startIndex = Math.max(0, Math.floor(this.scrollTop / rowHeight));
     const endIndex = Math.min(
       this._length,
       Math.ceil(
-        (this.scrollTop + layout.canvasHeight - paddingTop - headerHeight) /
+        (this.scrollTop + visibleHeight - paddingTop - headerHeight) /
           rowHeight,
       ) + 1,
     );
@@ -1315,6 +1322,7 @@ class VirtualTable {
       customPadding ?? this._style.cellPadding ?? [5, 10],
     );
     const horizontalPadding = cellPaddingObj.left + cellPaddingObj.right;
+    // const verticalPadding = cellPaddingObj.top + cellPaddingObj.bottom;
     const textAlign = this._style.textAlign ?? "left";
     const maxTextWidth = Math.max(0, cellWidth - horizontalPadding);
     let displayText = text;
@@ -1741,19 +1749,18 @@ class VirtualTable {
   }
 }
 
-export type {
-  TableFixed,
-  TableColumnType,
-  TableColumn,
-  RowStyleResolverResult,
-  RowStyleResolver,
-  TableStyle,
-  ValueBuilder,
-  TableOptions,
-  RenderLayout,
-  VirtualTableEventType,
-  VirtualTableEventHandlerMap,
-  VirtualTableCreateOptions,
+export {
+  type TableFixed,
+  type TableColumnType,
+  type TableColumn,
+  type RowStyleResolverResult,
+  type RowStyleResolver,
+  type TableStyle,
+  type ValueBuilder,
+  type TableOptions,
+  type RenderLayout,
+  type VirtualTableEventType,
+  type VirtualTableEventHandlerMap,
+  type VirtualTableCreateOptions,
+  VirtualTable,
 };
-
-export { VirtualTable };
