@@ -17,7 +17,9 @@
     "send:publish": "pnpm publish --registry=https://registry.npmjs.org/"
   },
   "files": [
-    "dist/**/*"
+    "dist/**/*",
+    "README.md",
+    "README-zh.md"
   ],
   "keywords": [
     "virtual-table",
