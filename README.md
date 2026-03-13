@@ -101,6 +101,7 @@ Table column configuration
 | `getValue` | `(row, index) => string` | No | Custom cell display value |
 | `width` | `number` | No | Column width |
 | `fixed` | `'left' \| 'right'` | No | Fix column to left or right |
+| `wrap` | `boolean` | No | Whether to enable text wrapping for this column |
 
 #### TableStyle
 
@@ -108,16 +109,22 @@ Table style configuration
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `rowHeight` | `number` | 40 | Row height |
+| `rowHeight` | `number` | 40 | Row height (minimum row height when using dynamic row height) |
+| `minRowHeight` | `number` | 40 | Minimum row height |
+| `maxRowHeight` | `number` | 0 | Maximum row height (0 means no limit) |
 | `headerHeight` | `number` | 50 | Header height |
-| `font` | `string` | `14px system-ui` | Font |
-| `headerFont` | `string` | `bold 14px system-ui` | Header font |
+| `font` | `string` | `14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif` | Font |
+| `headerFont` | `string` | `bold 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif` | Header font |
 | `headerBackgroundColor` | `string` | `#f5f5f5` | Header background color |
 | `rowBackgroundColor` | `string` | `#ffffff` | Row background color |
 | `rowAltBackgroundColor` | `string` | `#fafafa` | Alternate row background color |
 | `textColor` | `string` | `#333333` | Text color |
 | `textAlign` | `'left' \| 'right' \| 'center'` | `left` | Text alignment |
 | `borderColor` | `string` | `#e0e0e0` | Border color |
+| `verticalDividerColor` | `string` | `#f0f0f0` | Vertical divider color |
+| `verticalDividerWidth` | `number` | 1 | Vertical divider width |
+| `horizontalDividerColor` | `string` | `#f0f0f0` | Horizontal divider color |
+| `horizontalDividerWidth` | `number` | 1 | Horizontal divider width |
 | `rowHoverBackgroundColor` | `string` | `#f5f5f5` | Row hover background color |
 | `scrollbarWidth` | `number` | 12 | Scrollbar width |
 | `scrollbarTrackColor` | `string` | `#f1f1f1` | Scrollbar track color |
@@ -128,6 +135,7 @@ Table style configuration
 | `cellPadding` | `PaddingValue` | `[5, 10]` | Cell padding |
 | `headerCellPadding` | `PaddingValue` | `[5, 10]` | Header cell padding |
 | `showVerticalDividers` | `boolean` | false | Show vertical dividers |
+| `maxCellLines` | `number` | 0 | Maximum number of lines for cells (0 means no limit) |
 | `rowStyleResolver` | `(row, index) => RowStyleResolverResult` | - | Row style resolver |
 
 #### PaddingValue
@@ -161,6 +169,18 @@ Set table columns.
 
 Set table style.
 
+#### setDynamicRowHeight(enabled: boolean)
+
+Enable or disable dynamic row height.
+
+#### getRowHeightCache(): Map<number, number>
+
+Get row height cache.
+
+#### clearRowHeightCache()
+
+Clear row height cache.
+
 #### resize(width?: number, height?: number)
 
 Resize table.
@@ -168,6 +188,18 @@ Resize table.
 #### scrollTo(scrollTop?: number, scrollLeft?: number)
 
 Scroll to specified position.
+
+#### scrollToRow(rowIndex: number, align: "top" | "center" | "bottom" = "top")
+
+Scroll to specified row with alignment.
+
+#### addEventListener<T extends VirtualTableEventType>(type: T, listener: VirtualTableEventHandlerMap[T])
+
+Add event listener.
+
+#### removeEventListener<T extends VirtualTableEventType>(type: T, listener: VirtualTableEventHandlerMap[T])
+
+Remove event listener.
 
 ### Events
 
@@ -191,7 +223,11 @@ Listen to table created event.
 
 Listen to row created event.
 
-#### offHover / offClick / offScroll / offTableCreated / offRowCreated
+#### onRowHeightChanged(listener: (index: number, height: number) => void)
+
+Listen to row height changed event.
+
+#### offHover / offClick / offScroll / offTableCreated / offRowCreated / offRowHeightChanged
 
 Remove event listeners.
 

@@ -101,6 +101,7 @@ const table = VirtualTable.list(canvas, {
 | `getValue` | `(row, index) => string` | 否 | 自定义单元格显示值 |
 | `width` | `number` | 否 | 列宽 |
 | `fixed` | `'left' \| 'right'` | 否 | 是否固定在左侧或右侧 |
+| `wrap` | `boolean` | 否 | 该列是否启用自动换行 |
 
 #### TableStyle
 
@@ -108,16 +109,22 @@ const table = VirtualTable.list(canvas, {
 
 | 属性 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `rowHeight` | `number` | 40 | 行高 |
+| `rowHeight` | `number` | 40 | 行高（当使用动态行高时，此为最小行高） |
+| `minRowHeight` | `number` | 40 | 最小行高 |
+| `maxRowHeight` | `number` | 0 | 最大行高（0表示不限制） |
 | `headerHeight` | `number` | 50 | 表头高度 |
-| `font` | `string` | `14px system-ui` | 字体 |
-| `headerFont` | `string` | `bold 14px system-ui` | 表头字体 |
+| `font` | `string` | `14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif` | 字体 |
+| `headerFont` | `string` | `bold 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif` | 表头字体 |
 | `headerBackgroundColor` | `string` | `#f5f5f5` | 表头背景色 |
 | `rowBackgroundColor` | `string` | `#ffffff` | 行背景色 |
 | `rowAltBackgroundColor` | `string` | `#fafafa` | 交替行背景色 |
 | `textColor` | `string` | `#333333` | 文本颜色 |
 | `textAlign` | `'left' \| 'right' \| 'center'` | `left` | 文本对齐方式 |
 | `borderColor` | `string` | `#e0e0e0` | 边框颜色 |
+| `verticalDividerColor` | `string` | `#f0f0f0` | 垂直分隔线颜色 |
+| `verticalDividerWidth` | `number` | 1 | 垂直分隔线宽度 |
+| `horizontalDividerColor` | `string` | `#f0f0f0` | 水平分隔线颜色 |
+| `horizontalDividerWidth` | `number` | 1 | 水平分隔线宽度 |
 | `rowHoverBackgroundColor` | `string` | `#f5f5f5` | 行 hover 背景色 |
 | `scrollbarWidth` | `number` | 12 | 滚动条宽度 |
 | `scrollbarTrackColor` | `string` | `#f1f1f1` | 滚动条轨道颜色 |
@@ -128,6 +135,7 @@ const table = VirtualTable.list(canvas, {
 | `cellPadding` | `PaddingValue` | `[5, 10]` | 单元格内边距 |
 | `headerCellPadding` | `PaddingValue` | `[5, 10]` | 表头单元格内边距 |
 | `showVerticalDividers` | `boolean` | false | 是否显示垂直分隔线 |
+| `maxCellLines` | `number` | 0 | 单元格最大行数（0表示不限制） |
 | `rowStyleResolver` | `(row, index) => RowStyleResolverResult` | - | 行样式解析器 |
 
 #### PaddingValue
@@ -161,6 +169,18 @@ const table = VirtualTable.list(canvas, {
 
 设置表格样式。
 
+#### setDynamicRowHeight(enabled: boolean)
+
+启用或禁用动态行高。
+
+#### getRowHeightCache(): Map<number, number>
+
+获取行高缓存。
+
+#### clearRowHeightCache()
+
+清除行高缓存。
+
 #### resize(width?: number, height?: number)
 
 调整表格大小。
@@ -168,6 +188,18 @@ const table = VirtualTable.list(canvas, {
 #### scrollTo(scrollTop?: number, scrollLeft?: number)
 
 滚动到指定位置。
+
+#### scrollToRow(rowIndex: number, align: "top" | "center" | "bottom" = "top")
+
+滚动到指定行并对齐。
+
+#### addEventListener<T extends VirtualTableEventType>(type: T, listener: VirtualTableEventHandlerMap[T])
+
+添加事件监听器。
+
+#### removeEventListener<T extends VirtualTableEventType>(type: T, listener: VirtualTableEventHandlerMap[T])
+
+移除事件监听器。
 
 ### 事件
 
@@ -191,7 +223,11 @@ const table = VirtualTable.list(canvas, {
 
 监听行创建事件。
 
-#### offHover / offClick / offScroll / offTableCreated / offRowCreated
+#### onRowHeightChanged(listener: (index: number, height: number) => void)
+
+监听行高度变化事件。
+
+#### offHover / offClick / offScroll / offTableCreated / offRowCreated / offRowHeightChanged
 
 移除事件监听。
 
