@@ -153,29 +153,63 @@ const table = VirtualTable.list(canvas, {
 
 创建 VirtualTable 实例。
 
+**参数：**
+- `el`: HTMLCanvasElement - 用于渲染表格的 canvas 元素
+- `options`: TableOptions - 表格配置选项
+  - `columns`: TableColumn[] - 列配置
+  - `length`: number - 行数
+  - `valueBuilder`: (index: number) => Record<string, any> - 生成行数据的函数
+  - `style`: TableStyle - 表格样式配置（可选）
+  - `dynamicRowHeight`: boolean - 是否启用动态行高（默认：true）
+
 #### static list(el: HTMLCanvasElement, options: VirtualTableCreateOptions)
 
 静态方法，使用数组数据创建表格。
+
+**参数：**
+- `el`: HTMLCanvasElement - 用于渲染表格的 canvas 元素
+- `options`: VirtualTableCreateOptions - 表格创建选项
+  - `columns`: TableColumn[] - 列配置
+  - `values`: Record<string, any>[] - 行数据数组
+  - `style`: TableStyle - 表格样式配置（可选）
+  - `dynamicRowHeight`: boolean - 是否启用动态行高（默认：true）
+
+**返回值：** VirtualTable 实例
 
 #### setValues(length: number, valueBuilder: ValueBuilder)
 
 设置表格数据。
 
+**参数：**
+- `length`: number - 行数
+- `valueBuilder`: (index: number) => Record<string, any> - 生成行数据的函数
+
 #### setColumns(columns: TableColumn[])
 
 设置表格列。
+
+**参数：**
+- `columns`: TableColumn[] - 列配置数组
 
 #### setStyle(style: TableStyle)
 
 设置表格样式。
 
+**参数：**
+- `style`: TableStyle - 表格样式配置
+
 #### setDynamicRowHeight(enabled: boolean)
 
 启用或禁用动态行高。
 
+**参数：**
+- `enabled`: boolean - 是否启用动态行高
+
 #### getRowHeightCache(): Map<number, number>
 
 获取行高缓存。
+
+**返回值：** Map<number, number> - 行索引到高度的映射
 
 #### clearRowHeightCache()
 
@@ -185,21 +219,41 @@ const table = VirtualTable.list(canvas, {
 
 调整表格大小。
 
+**参数：**
+- `width`: number - 表格宽度（可选）
+- `height`: number - 表格高度（可选）
+
 #### scrollTo(scrollTop?: number, scrollLeft?: number)
 
 滚动到指定位置。
+
+**参数：**
+- `scrollTop`: number - 垂直滚动位置（可选）
+- `scrollLeft`: number - 水平滚动位置（可选）
 
 #### scrollToRow(rowIndex: number, align: "top" | "center" | "bottom" = "top")
 
 滚动到指定行并对齐。
 
+**参数：**
+- `rowIndex`: number - 要滚动到的行索引
+- `align`: "top" | "center" | "bottom" - 在视口中的对齐方式（默认："top"）
+
 #### addEventListener<T extends VirtualTableEventType>(type: T, listener: VirtualTableEventHandlerMap[T])
 
 添加事件监听器。
 
+**参数：**
+- `type`: VirtualTableEventType - 事件类型
+- `listener`: 事件监听器函数
+
 #### removeEventListener<T extends VirtualTableEventType>(type: T, listener: VirtualTableEventHandlerMap[T])
 
 移除事件监听器。
+
+**参数：**
+- `type`: VirtualTableEventType - 事件类型
+- `listener`: 要移除的事件监听器函数
 
 ### 事件
 
@@ -207,13 +261,25 @@ const table = VirtualTable.list(canvas, {
 
 监听 hover 事件。
 
+**参数：**
+- `row`: Record<string, any> - 悬停的行数据
+- `index`: number - 悬停的行索引
+
 #### onClick(listener: (row: Record<string, any>, index: number) => void)
 
 监听 click 事件。
 
+**参数：**
+- `row`: Record<string, any> - 点击的行数据
+- `index`: number - 点击的行索引
+
 #### onScroll(listener: (scrollTop: number, scrollLeft: number) => void)
 
 监听 scroll 事件。
+
+**参数：**
+- `scrollTop`: number - 当前垂直滚动位置
+- `scrollLeft`: number - 当前水平滚动位置
 
 #### onTableCreated(listener: () => void)
 
@@ -223,13 +289,59 @@ const table = VirtualTable.list(canvas, {
 
 监听行创建事件。
 
+**参数：**
+- `row`: Record<string, any> - 创建的行数据
+- `index`: number - 创建的行索引
+
 #### onRowHeightChanged(listener: (index: number, height: number) => void)
 
 监听行高度变化事件。
 
-#### offHover / offClick / offScroll / offTableCreated / offRowCreated / offRowHeightChanged
+**参数：**
+- `index`: number - 高度变化的行索引
+- `height`: number - 新的行高度
 
-移除事件监听。
+#### offHover(listener: (row: Record<string, any>, index: number) => void)
+
+移除 hover 事件监听器。
+
+**参数：**
+- `listener`: 要移除的 hover 事件监听器
+
+#### offClick(listener: (row: Record<string, any>, index: number) => void)
+
+移除 click 事件监听器。
+
+**参数：**
+- `listener`: 要移除的 click 事件监听器
+
+#### offScroll(listener: (scrollTop: number, scrollLeft: number) => void)
+
+移除 scroll 事件监听器。
+
+**参数：**
+- `listener`: 要移除的 scroll 事件监听器
+
+#### offTableCreated(listener: () => void)
+
+移除表格创建完成事件监听器。
+
+**参数：**
+- `listener`: 要移除的表格创建完成事件监听器
+
+#### offRowCreated(listener: (row: Record<string, any>, index: number) => void)
+
+移除行创建事件监听器。
+
+**参数：**
+- `listener`: 要移除的行创建事件监听器
+
+#### offRowHeightChanged(listener: (index: number, height: number) => void)
+
+移除行高度变化事件监听器。
+
+**参数：**
+- `listener`: 要移除的行高度变化事件监听器
 
 ## 示例
 

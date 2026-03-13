@@ -153,29 +153,63 @@ Padding value type, supports the following formats:
 
 Create a VirtualTable instance.
 
+**Parameters:**
+- `el`: HTMLCanvasElement - The canvas element to render the table
+- `options`: TableOptions - Table configuration options
+  - `columns`: TableColumn[] - Column configuration
+  - `length`: number - Number of rows
+  - `valueBuilder`: (index: number) => Record<string, any> - Function to generate row data
+  - `style`: TableStyle - Table style configuration (optional)
+  - `dynamicRowHeight`: boolean - Enable dynamic row height (default: true)
+
 #### static list(el: HTMLCanvasElement, options: VirtualTableCreateOptions)
 
 Static method, create table using array data.
+
+**Parameters:**
+- `el`: HTMLCanvasElement - The canvas element to render the table
+- `options`: VirtualTableCreateOptions - Table creation options
+  - `columns`: TableColumn[] - Column configuration
+  - `values`: Record<string, any>[] - Array of row data
+  - `style`: TableStyle - Table style configuration (optional)
+  - `dynamicRowHeight`: boolean - Enable dynamic row height (default: true)
+
+**Returns:** VirtualTable instance
 
 #### setValues(length: number, valueBuilder: ValueBuilder)
 
 Set table data.
 
+**Parameters:**
+- `length`: number - Number of rows
+- `valueBuilder`: (index: number) => Record<string, any> - Function to generate row data
+
 #### setColumns(columns: TableColumn[])
 
 Set table columns.
+
+**Parameters:**
+- `columns`: TableColumn[] - Column configuration array
 
 #### setStyle(style: TableStyle)
 
 Set table style.
 
+**Parameters:**
+- `style`: TableStyle - Table style configuration
+
 #### setDynamicRowHeight(enabled: boolean)
 
 Enable or disable dynamic row height.
 
+**Parameters:**
+- `enabled`: boolean - Whether to enable dynamic row height
+
 #### getRowHeightCache(): Map<number, number>
 
 Get row height cache.
+
+**Returns:** Map<number, number> - Row index to height mapping
 
 #### clearRowHeightCache()
 
@@ -185,21 +219,41 @@ Clear row height cache.
 
 Resize table.
 
+**Parameters:**
+- `width`: number - Table width (optional)
+- `height`: number - Table height (optional)
+
 #### scrollTo(scrollTop?: number, scrollLeft?: number)
 
 Scroll to specified position.
+
+**Parameters:**
+- `scrollTop`: number - Vertical scroll position (optional)
+- `scrollLeft`: number - Horizontal scroll position (optional)
 
 #### scrollToRow(rowIndex: number, align: "top" | "center" | "bottom" = "top")
 
 Scroll to specified row with alignment.
 
+**Parameters:**
+- `rowIndex`: number - Row index to scroll to
+- `align`: "top" | "center" | "bottom" - Alignment within viewport (default: "top")
+
 #### addEventListener<T extends VirtualTableEventType>(type: T, listener: VirtualTableEventHandlerMap[T])
 
 Add event listener.
 
+**Parameters:**
+- `type`: VirtualTableEventType - Event type
+- `listener`: Event listener function
+
 #### removeEventListener<T extends VirtualTableEventType>(type: T, listener: VirtualTableEventHandlerMap[T])
 
 Remove event listener.
+
+**Parameters:**
+- `type`: VirtualTableEventType - Event type
+- `listener`: Event listener function to remove
 
 ### Events
 
@@ -207,13 +261,25 @@ Remove event listener.
 
 Listen to hover events.
 
+**Parameters:**
+- `row`: Record<string, any> - Hovered row data
+- `index`: number - Hovered row index
+
 #### onClick(listener: (row: Record<string, any>, index: number) => void)
 
 Listen to click events.
 
+**Parameters:**
+- `row`: Record<string, any> - Clicked row data
+- `index`: number - Clicked row index
+
 #### onScroll(listener: (scrollTop: number, scrollLeft: number) => void)
 
 Listen to scroll events.
+
+**Parameters:**
+- `scrollTop`: number - Current vertical scroll position
+- `scrollLeft`: number - Current horizontal scroll position
 
 #### onTableCreated(listener: () => void)
 
@@ -223,13 +289,59 @@ Listen to table created event.
 
 Listen to row created event.
 
+**Parameters:**
+- `row`: Record<string, any> - Created row data
+- `index`: number - Created row index
+
 #### onRowHeightChanged(listener: (index: number, height: number) => void)
 
 Listen to row height changed event.
 
-#### offHover / offClick / offScroll / offTableCreated / offRowCreated / offRowHeightChanged
+**Parameters:**
+- `index`: number - Row index whose height changed
+- `height`: number - New row height
 
-Remove event listeners.
+#### offHover(listener: (row: Record<string, any>, index: number) => void)
+
+Remove hover event listener.
+
+**Parameters:**
+- `listener`: The hover event listener to remove
+
+#### offClick(listener: (row: Record<string, any>, index: number) => void)
+
+Remove click event listener.
+
+**Parameters:**
+- `listener`: The click event listener to remove
+
+#### offScroll(listener: (scrollTop: number, scrollLeft: number) => void)
+
+Remove scroll event listener.
+
+**Parameters:**
+- `listener`: The scroll event listener to remove
+
+#### offTableCreated(listener: () => void)
+
+Remove table created event listener.
+
+**Parameters:**
+- `listener`: The table created event listener to remove
+
+#### offRowCreated(listener: (row: Record<string, any>, index: number) => void)
+
+Remove row created event listener.
+
+**Parameters:**
+- `listener`: The row created event listener to remove
+
+#### offRowHeightChanged(listener: (index: number, height: number) => void)
+
+Remove row height changed event listener.
+
+**Parameters:**
+- `listener`: The row height changed event listener to remove
 
 ## Examples
 
