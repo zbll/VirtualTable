@@ -1,3 +1,14 @@
+/**
+ * VirtualTable - 高性能虚拟滚动表格组件
+ * 使用 Canvas 渲染，支持海量数据（~3万亿行）
+ *
+ * 核心特性：
+ * 1. 虚拟滚动 - 只渲染可见区域
+ * 2. 动态行高 - 根据内容自动计算
+ * 3. 固定列 - 支持左右固定
+ * 4. 高性能滚动 - 滚动条拖拽不卡顿
+ */
+
 type TableFixed = "left" | "right";
 type TableColumnType = "text" | "html";
 
@@ -17,6 +28,8 @@ type TableColumn = {
   width?: number;
   /** 是否固定在左侧或右侧 */
   fixed?: TableFixed;
+  /** 该列是否启用自动换行 */
+  wrap?: boolean;
 };
 
 type RowStyleResolverResult = {
@@ -43,11 +56,7 @@ type RowStyleResolver = (
 ) => RowStyleResolverResult;
 
 /**
- * Padding 值类型，支持 CSS 风格的多种形式
- * - number: 四个方向相同
- * - [number, number]: 上下，左右
- * - [number, number, number]: 上，左右，下
- * - [number, number, number, number]: 上，右，下，左
+ * Padding 值类型
  */
 type PaddingValue =
   | number
@@ -56,7 +65,7 @@ type PaddingValue =
   | [number, number, number, number];
 
 /**
- * 解析 PaddingValue 为四个方向的值
+ * 解析 PaddingValue 为四个方向值
  */
 function parsePadding(padding: PaddingValue | undefined): {
   top: number;
@@ -112,8 +121,12 @@ function parsePadding(padding: PaddingValue | undefined): {
  * 表格样式接口
  */
 type TableStyle = {
-  /** 行高 */
+  /** 行高（当使用动态行高时，此为最小行高） */
   rowHeight?: number;
+  /** 最小行高 */
+  minRowHeight?: number;
+  /** 最大行高（0表示不限制） */
+  maxRowHeight?: number;
   /** 表头高度 */
   headerHeight?: number;
   /** 字体 */
@@ -156,6 +169,8 @@ type TableStyle = {
   showVerticalDividers?: boolean;
   /** 行样式解析器 */
   rowStyleResolver?: RowStyleResolver;
+  /** 单元格最大行数 */
+  maxCellLines?: number;
 };
 
 /**
@@ -167,57 +182,40 @@ type ValueBuilder = (index: number) => Record<string, any>;
  * 表格选项接口
  */
 type TableOptions = {
-  /** 列配置 */
   columns: TableColumn[];
-  /** 数据总长度 */
   length: number;
-  /** 数据构建函数，按需构建指定下标的数据 */
   valueBuilder: ValueBuilder;
-  /** 样式配置（可选） */
   style?: TableStyle;
+  dynamicRowHeight?: boolean;
 };
 
 /**
  * 渲染布局接口
  */
 type RenderLayout = {
-  /** 行高 */
   rowHeight: number;
-  /** 表头高度 */
+  minRowHeight: number;
+  maxRowHeight: number;
   headerHeight: number;
-  /** 内边距 - 上右下左 */
   paddingTop: number;
   paddingRight: number;
   paddingBottom: number;
   paddingLeft: number;
-  /** 滚动条宽度 */
   scrollbarWidth: number;
-  /** 画布宽度 */
   canvasWidth: number;
-  /** 画布高度 */
   canvasHeight: number;
-  /** 列宽数组 */
   columnWidths: number[];
-  /** 总内容宽度 */
   totalContentWidth: number;
-  /** 左侧固定列宽度 */
   leftFixedWidth: number;
-  /** 右侧固定列宽度 */
   rightFixedWidth: number;
-  /** 是否有水平滚动条 */
   hasHorizontalScrollbar: boolean;
-  /** 视图宽度 */
   viewWidth: number;
-  /** 水平滚动条高度 */
   horizontalScrollbarHeight: number;
-  /** 内容宽度 */
   contentWidth: number;
-  /** 内容高度 */
   contentHeight: number;
-  /** 最大垂直滚动值 */
   maxScroll: number;
-  /** 最大水平滚动值 */
   maxScrollLeft: number;
+  useDynamicRowHeight: boolean;
 };
 
 type VirtualTableEventHandlerMap = {
@@ -226,6 +224,7 @@ type VirtualTableEventHandlerMap = {
   tableCreated: () => void;
   rowCreated: (row: Record<string, any>, index: number) => void;
   scroll: (scrollTop: number, scrollLeft: number) => void;
+  rowHeightChanged: (index: number, height: number) => void;
 };
 type VirtualTableEventType = keyof VirtualTableEventHandlerMap;
 
@@ -233,45 +232,61 @@ type VirtualTableCreateOptions = {
   columns: TableColumn[];
   values: Record<string, any>[];
   style?: TableStyle;
+  dynamicRowHeight?: boolean;
 };
+
+/**
+ * 滚动条信息缓存
+ */
+interface ScrollbarInfo {
+  maxScroll: number;
+  scrollbarHeight: number;
+  scrollbarY: number;
+  maxScrollLeft: number;
+  hScrollbarWidth: number;
+  scrollbarX: number;
+  hasHScrollbar: boolean;
+  hasVScrollbar: boolean;
+  vScrollbarTrackHeight: number;
+  viewWidth: number;
+}
 
 class VirtualTable {
   static get MAX_LENGTH() {
     return 2998683910349035;
   }
-  /** Canvas元素 */
+
   private el: HTMLCanvasElement;
-  /** 垂直滚动位置 */
-  private scrollTop = 0;
-  /** 水平滚动位置 */
-  private scrollLeft = 0;
-  /** 是否正在拖动垂直滚动条 */
-  private isDraggingScrollbar = false;
-  /** 是否正在拖动水平滚动条 */
-  private isDraggingHorizontalScrollbar = false;
-  /** 是否hover垂直滚动条 */
-  private isHoveringVScrollbar = false;
-  /** 是否hover水平滚动条 */
-  private isHoveringHScrollbar = false;
-  /** 是否按下垂直滚动条 */
-  private isPressedVScrollbar = false;
-  /** 是否按下水平滚动条 */
-  private isPressedHScrollbar = false;
-  /** hover的行索引 */
-  private hoverRow: number = -1;
-  /** 拖动开始的Y坐标 */
-  private dragStartY = 0;
-  /** 拖动开始的X坐标 */
-  private dragStartX = 0;
-  /** 拖动开始时的滚动位置 */
-  private dragStartScrollTop = 0;
-  /** 拖动开始时的水平滚动位置 */
-  private dragStartScrollLeft = 0;
-  /** canvas上下文 */
   private ctx: CanvasRenderingContext2D | null = null;
-  /** 表格是否已创建完成 */
+  private scrollTop = 0;
+  private scrollLeft = 0;
+  private isDraggingVScrollbar = false;
+  private isDraggingHScrollbar = false;
+  private dragStartY = 0;
+  private dragStartX = 0;
+  private dragStartScrollTop = 0;
+  private dragStartScrollLeft = 0;
+  private hoverRow: number = -1;
+  private isHoveringVScrollbar = false;
+  private isHoveringHScrollbar = false;
+  private isPressedVScrollbar = false;
+  private isPressedHScrollbar = false;
+  private _columns: TableColumn[] = [];
+  private _length = 0;
+  private _valueBuilder: ValueBuilder = () => ({});
+  private _style: TableStyle = {};
+  private _cache: Map<number, Record<string, any>> = new Map();
+  private _rowHeightCache: Map<number, number> = new Map();
+  private _rowHeightCacheMaxSize = 1000;
+  private _estimatedRowHeight = 40;
+  private _cumulativeHeightCache: Map<number, number> = new Map();
+  private _layout: RenderLayout | null = null;
+  private _scrollbarInfo: ScrollbarInfo | null = null;
+  private _totalContentHeight = 0;
+  private _useDynamicRowHeight = true;
   private isTableCreated = false;
-  /** 事件监听器 */
+  private _renderScheduled = false;
+  private _suppressRender = false;
   private eventListeners: {
     [K in VirtualTableEventType]: Set<VirtualTableEventHandlerMap[K]>;
   } = {
@@ -280,29 +295,45 @@ class VirtualTable {
     tableCreated: new Set(),
     rowCreated: new Set(),
     scroll: new Set(),
+    rowHeightChanged: new Set(),
   };
-  /** 列配置 */
-  private _columns: TableColumn[] = [];
-  /** 数据总长度 */
-  private _length = 0;
-  /** 数据构建函数 */
-  private _valueBuilder: ValueBuilder = () => ({});
-  /** 数据缓存 */
-  private _cache: Map<number, Record<string, any>> = new Map();
-  /** 缓存阈值，超过此值清理旧缓存 */
-  private _cacheThreshold = 10_000;
-  /** 样式配置 */
-  private _style: TableStyle = {};
-  /** 最近一次渲染布局快照 */
-  private _layout: RenderLayout | null = null;
+  private _stats = {
+    renderCount: 0,
+    cacheHitCount: 0,
+    cacheMissCount: 0,
+  };
+  private _dragRenderRafId: number | null = null;
+
+  private _startDragRenderLoop() {
+    if (this._dragRenderRafId !== null) return;
+    const loop = () => {
+      if (!this.isDraggingVScrollbar && !this.isDraggingHScrollbar) {
+        this._dragRenderRafId = null;
+        return;
+      }
+      this._render();
+      this._dragRenderRafId = requestAnimationFrame(loop);
+    };
+    this._dragRenderRafId = requestAnimationFrame(loop);
+  }
+
+  private _stopDragRenderLoop() {
+    if (this._dragRenderRafId !== null) {
+      cancelAnimationFrame(this._dragRenderRafId);
+      this._dragRenderRafId = null;
+    }
+    this.isDraggingVScrollbar = false;
+    this.isDraggingHScrollbar = false;
+  }
 
   static list(el: HTMLCanvasElement, options: VirtualTableCreateOptions) {
-    const { columns, values, style } = options;
+    const { columns, values, style, dynamicRowHeight } = options;
     return new VirtualTable(el, {
       columns,
       length: values.length,
       valueBuilder: (index) => values[index],
       style,
+      dynamicRowHeight,
     });
   }
 
@@ -315,51 +346,60 @@ class VirtualTable {
     }
   }
 
-  /**
-   * 初始化ResizeObserver监听容器大小变化
-   */
   private _initResizeObserver() {
     const observer = new ResizeObserver(() => {
-      this._render();
+      this._invalidateLayout();
+      this._scheduleRender();
     });
     observer.observe(this.el.parentElement || this.el);
   }
 
-  /**
-   * 初始化表格配置
-   * @param options 表格配置选项
-   */
   private _initTable(options: TableOptions) {
     this._columns = options.columns;
     this._length = Math.min(options.length, VirtualTable.MAX_LENGTH);
     this._valueBuilder = options.valueBuilder;
+    this._useDynamicRowHeight = options.dynamicRowHeight ?? true;
+
     this._cache.clear();
+    this._clearRowHeightCache();
+
     if (options.style) {
       this._style = { ...this._style, ...options.style };
     }
-    this._render();
+
+    this._estimateBaseRowHeight();
+    this._recalcTotalContentHeight();
+    this._invalidateLayout();
+    this._scheduleRender();
+
     this.isTableCreated = true;
     this._emitEvent("tableCreated");
   }
 
-  /**
-   * 设置表格数据
-   * @param length 数据长度
-   * @param valueBuilder 数据构建函数
-   */
+  private _estimateBaseRowHeight() {
+    const cellPadding = parsePadding(this._style.cellPadding ?? [5, 10]);
+    const verticalPadding = cellPadding.top + cellPadding.bottom;
+    const fontSize = 14;
+    const baseRowHeight = fontSize + verticalPadding + 10;
+
+    if (this._useDynamicRowHeight) {
+      this._estimatedRowHeight = Math.max(200, baseRowHeight);
+    } else {
+      this._estimatedRowHeight = this._style.minRowHeight ?? baseRowHeight;
+    }
+  }
+
   setValues(length: number, valueBuilder: ValueBuilder) {
     this._length = Math.min(length, VirtualTable.MAX_LENGTH);
     this._valueBuilder = valueBuilder;
     this._cache.clear();
+    this._clearRowHeightCache();
     this.scrollTop = 0;
-    this._render();
+    this._invalidateLayout();
+    this._recalcTotalContentHeight();
+    this._scheduleRender();
   }
 
-  /**
-   * 调整Canvas大小并重新渲染
-   * @param width 宽度（可选，不传则使用容器宽度）
-   * @param height 高度（可选，不传则使用容器高度）
-   */
   resize(width?: number, height?: number) {
     if (width) {
       this.el.width = width;
@@ -369,32 +409,84 @@ class VirtualTable {
       this.el.height = height;
       this.el.style.height = `${height}px`;
     }
-    this._render();
+    this._invalidateLayout();
+    this._recalcTotalContentHeight();
+    this._scheduleRender();
   }
 
-  /**
-   * 设置表格列
-   * @param columns 列配置
-   */
   setColumns(columns: TableColumn[]) {
     this._columns = columns;
-    this._render();
+    this._invalidateLayout();
+    this._scheduleRender();
   }
 
-  /**
-   * 设置表格样式
-   * @param style 样式配置
-   */
   setStyle(style: TableStyle) {
     this._style = { ...this._style, ...style };
-    this._render();
+    this._estimateBaseRowHeight();
+    this._invalidateLayout();
+    this._recalcTotalContentHeight();
+    this._scheduleRender();
   }
 
-  /**
-   * 添加事件监听
-   * @param type 事件类型
-   * @param listener 监听函数
-   */
+  setDynamicRowHeight(enabled: boolean) {
+    if (this._useDynamicRowHeight !== enabled) {
+      this._useDynamicRowHeight = enabled;
+      if (!enabled) {
+        this._clearRowHeightCache();
+      }
+      this._invalidateLayout();
+      this._recalcTotalContentHeight();
+      this._scheduleRender();
+    }
+  }
+
+  getRowHeightCache(): Map<number, number> {
+    return this._rowHeightCache;
+  }
+
+  clearRowHeightCache() {
+    this._clearRowHeightCache();
+    this._invalidateLayout();
+    this._recalcTotalContentHeight();
+    this._scheduleRender();
+  }
+
+  scrollTo(scrollTop?: number, scrollLeft?: number) {
+    const info = this._getScrollbarInfo();
+
+    if (scrollTop !== undefined) {
+      this.scrollTop = Math.max(0, Math.min(info.maxScroll, scrollTop));
+    }
+
+    if (scrollLeft !== undefined) {
+      this.scrollLeft = Math.max(0, Math.min(info.maxScrollLeft, scrollLeft));
+    }
+
+    this._scheduleRender();
+    this._emitEvent("scroll", this.scrollTop, this.scrollLeft);
+  }
+
+  scrollToRow(rowIndex: number, align: "top" | "center" | "bottom" = "top") {
+    const rowTop = this._getRowTop(rowIndex);
+    const rowHeight = this._getCachedRowHeight(rowIndex);
+    const visibleHeight =
+      this.el.clientHeight - (this._layout?.horizontalScrollbarHeight ?? 0);
+
+    let targetScrollTop: number;
+    switch (align) {
+      case "center":
+        targetScrollTop = rowTop - (visibleHeight - rowHeight) / 2;
+        break;
+      case "bottom":
+        targetScrollTop = rowTop - visibleHeight + rowHeight;
+        break;
+      default:
+        targetScrollTop = rowTop;
+    }
+
+    this.scrollTo(targetScrollTop, undefined);
+  }
+
   addEventListener<T extends VirtualTableEventType>(
     type: T,
     listener: VirtualTableEventHandlerMap[T],
@@ -402,7 +494,6 @@ class VirtualTable {
     this.eventListeners[type].add(listener);
     if (type === "tableCreated" && this.isTableCreated) {
       (listener as VirtualTableEventHandlerMap["tableCreated"])();
-      return;
     }
     if (type === "rowCreated" && this.isTableCreated) {
       this._replayCreatedRows(
@@ -429,6 +520,12 @@ class VirtualTable {
 
   onScroll(listener: VirtualTableEventHandlerMap["scroll"]) {
     this.addEventListener("scroll", listener);
+  }
+
+  onRowHeightChanged(
+    listener: VirtualTableEventHandlerMap["rowHeightChanged"],
+  ) {
+    this.addEventListener("rowHeightChanged", listener);
   }
 
   removeEventListener<T extends VirtualTableEventType>(
@@ -458,10 +555,12 @@ class VirtualTable {
     this.removeEventListener("scroll", listener);
   }
 
-  /**
-   * 回放已创建的行数据事件
-   * @param listener 行创建监听器
-   */
+  offRowHeightChanged(
+    listener: VirtualTableEventHandlerMap["rowHeightChanged"],
+  ) {
+    this.removeEventListener("rowHeightChanged", listener);
+  }
+
   private _replayCreatedRows(
     listener: VirtualTableEventHandlerMap["rowCreated"],
   ) {
@@ -472,29 +571,15 @@ class VirtualTable {
       });
   }
 
-  /**
-   * 获取指定下标的数据（带缓存）
-   * @param index 数据下标
-   */
   private _getValue(index: number): Record<string, any> {
     if (this._cache.has(index)) {
       return this._cache.get(index)!;
     }
     const value = this._valueBuilder(index);
-    if (this._cache.size >= this._cacheThreshold) {
-      this._cache.clear();
-    }
     this._cache.set(index, value);
-    this._emitEvent("rowCreated", value, index);
     return value;
   }
 
-  /**
-   * 获取单元格显示文本
-   * @param col 列配置
-   * @param row 行数据
-   * @param rowIndex 行下标
-   */
   private _getCellDisplayValue(
     col: TableColumn,
     row: Record<string, any>,
@@ -505,11 +590,745 @@ class VirtualTable {
     return String(rawValue);
   }
 
+  private _getCachedRowHeight(rowIndex: number): number {
+    if (this._rowHeightCache.has(rowIndex)) {
+      this._stats.cacheHitCount++;
+      return this._rowHeightCache.get(rowIndex)!;
+    }
+    this._stats.cacheMissCount++;
+    return this._estimatedRowHeight;
+  }
+
+  private _clearRowHeightCache() {
+    this._rowHeightCache.clear();
+    this._cumulativeHeightCache.clear();
+  }
+
   /**
-   * 触发表格事件
-   * @param type 事件类型
-   * @param args 事件参数
+   * 计算单行高度
    */
+  private _calculateRowHeight(
+    row: Record<string, any>,
+    rowIndex: number,
+    colWidths: number[],
+  ): number {
+    const cellPadding = parsePadding(this._style.cellPadding ?? [5, 10]);
+    const verticalPadding = cellPadding.top + cellPadding.bottom;
+    const maxCellLines = this._style.maxCellLines ?? 0;
+
+    let maxLines = 1;
+    const wrapColumns = this._columns.filter((c) => c.wrap);
+
+    if (wrapColumns.length > 0 && this.ctx) {
+      const horizontalPadding = cellPadding.left + cellPadding.right;
+      const baseFont =
+        this._style.font ??
+        "14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      this.ctx.font = baseFont;
+
+      for (const col of wrapColumns) {
+        const colIndex = this._columns.indexOf(col);
+        const text = this._getCellDisplayValue(col, row, rowIndex);
+        const colWidth =
+          (colWidths[colIndex] ?? col.width ?? 100) - horizontalPadding;
+        if (colWidth <= 0) continue;
+
+        const lines = this._wrapText(this.ctx, text, colWidth);
+        if (lines.length > maxLines) {
+          maxLines = lines.length;
+        }
+      }
+    }
+
+    if (maxCellLines > 0 && maxLines > maxCellLines) {
+      maxLines = maxCellLines;
+    }
+
+    const fontSize = 14;
+    const lineHeight = fontSize * 1.5;
+    const minHeightForLines =
+      fontSize + (maxLines - 1) * lineHeight + verticalPadding;
+
+    const minHeight = this._style.minRowHeight ?? this._estimatedRowHeight;
+    const maxHeight = this._style.maxRowHeight ?? 0;
+
+    let finalHeight = Math.max(minHeight, minHeightForLines);
+    if (maxHeight > 0) {
+      finalHeight = Math.min(maxHeight, finalHeight);
+    }
+
+    return finalHeight;
+  }
+
+  /**
+   * 获取行高（带缓存和 LRU）
+   */
+  private _getRowHeight(rowIndex: number, row: Record<string, any>): number {
+    if (this._rowHeightCache.has(rowIndex)) {
+      return this._rowHeightCache.get(rowIndex)!;
+    }
+
+    const colWidths = this._layout?.columnWidths ?? [];
+    const height = this._calculateRowHeight(row, rowIndex, colWidths);
+
+    if (this._rowHeightCache.size >= this._rowHeightCacheMaxSize) {
+      this._rowHeightCache.clear();
+    }
+
+    this._rowHeightCache.set(rowIndex, height);
+    return height;
+  }
+
+  /**
+   * 获取平均行高
+   */
+  private _getAvgRowHeight(): number {
+    // 使用固定的预估行高，避免缓存变化导致计算不稳定
+    return this._estimatedRowHeight;
+  }
+
+  /**
+   * 获取总内容高度
+   */
+  private _recalcTotalContentHeight() {
+    const { top: paddingTop, bottom: paddingBottom } = parsePadding(
+      this._style.tablePadding,
+    );
+
+    this._totalContentHeight =
+      this._length * this._estimatedRowHeight + paddingTop + paddingBottom;
+  }
+
+  /**
+   * 获取累积高度
+   */
+  private _getCumulativeHeight(endIndex: number): number {
+    if (endIndex <= 0) return 0;
+    return endIndex * this._estimatedRowHeight;
+  }
+
+  /**
+   * 获取累积高度（动态行高）- 使用估算值
+   */
+  private _getCumulativeHeightDynamic(endIndex: number): number {
+    if (endIndex <= 0) return 0;
+    return endIndex * this._estimatedRowHeight;
+  }
+
+  /**
+   * 获取指定行的顶部位置（增量优化）
+   */
+  private _getRowTop(rowIndex: number): number {
+    if (this._useDynamicRowHeight) {
+      return this._getCumulativeHeightDynamic(rowIndex);
+    }
+    return this._getCumulativeHeight(rowIndex);
+  }
+
+  private _getRowIndexAtY(y: number): number {
+    if (y < 0 || this._length === 0) return -1;
+
+    const layout = this._getLayout();
+    const bodyTop = layout.paddingTop + layout.headerHeight;
+    const visibleHeight =
+      layout.canvasHeight -
+      (layout.hasHorizontalScrollbar ? layout.horizontalScrollbarHeight : 0);
+    const bodyBottom = bodyTop + visibleHeight;
+
+    if (y < bodyTop || y >= bodyBottom) return -1;
+
+    const baseRowHeight = this._estimatedRowHeight;
+    const avgHeight = this._useDynamicRowHeight
+      ? this._getAvgRowHeight()
+      : baseRowHeight;
+
+    const estimatedStartIndex = Math.max(
+      0,
+      Math.floor(this.scrollTop / avgHeight) - 20,
+    );
+    const startIndex = estimatedStartIndex;
+    const endIndex = Math.min(
+      this._length,
+      startIndex + Math.ceil(visibleHeight / avgHeight) + 40,
+    );
+
+    let currentY = bodyTop + this._getRowTop(startIndex) - this.scrollTop;
+
+    for (let rowIndex = startIndex; rowIndex < endIndex; rowIndex++) {
+      if (currentY >= bodyBottom) break;
+
+      let rowHeight: number;
+      if (this._useDynamicRowHeight) {
+        if (currentY + baseRowHeight >= bodyTop) {
+          const row = this._getValue(rowIndex);
+          rowHeight = this._getRowHeight(rowIndex, row);
+        } else {
+          rowHeight = baseRowHeight;
+        }
+      } else {
+        rowHeight = baseRowHeight;
+      }
+
+      if (y >= currentY && y < currentY + rowHeight) {
+        return rowIndex;
+      }
+      currentY += rowHeight;
+    }
+
+    return -1;
+  }
+
+  private _invalidateLayout() {
+    this._layout = null;
+    this._scrollbarInfo = null;
+  }
+
+  private _getScrollbarInfo(): ScrollbarInfo {
+    if (this._scrollbarInfo && this._layout) {
+      // 返回缓存，但更新动态值
+      return {
+        ...this._scrollbarInfo,
+        scrollbarY: this._calcScrollbarY(this._scrollbarInfo),
+        scrollbarX: this._calcScrollbarX(this._scrollbarInfo),
+      };
+    }
+
+    const layout = this._getLayout();
+    this._scrollbarInfo = this._calcScrollbarInfo(layout);
+    return this._scrollbarInfo;
+  }
+
+  private _calcScrollbarY(info: ScrollbarInfo): number {
+    if (info.maxScroll <= 0) return 0;
+    return (
+      (this.scrollTop / info.maxScroll) *
+      (info.vScrollbarTrackHeight - info.scrollbarHeight)
+    );
+  }
+
+  private _calcScrollbarX(info: ScrollbarInfo): number {
+    if (info.maxScrollLeft <= 0) return 0;
+    return (
+      (this.scrollLeft / info.maxScrollLeft) *
+      (info.viewWidth - info.hScrollbarWidth)
+    );
+  }
+
+  private _calcScrollbarInfo(layout: RenderLayout): ScrollbarInfo {
+    const scrollbarWidth = layout.scrollbarWidth;
+    const canvasHeight = layout.canvasHeight;
+    const contentHeight = layout.contentHeight;
+
+    const hasVScrollbar = contentHeight > canvasHeight;
+    const vScrollbarTrackHeight =
+      canvasHeight - (layout.hasHorizontalScrollbar ? scrollbarWidth : 0);
+
+    const maxScroll = Math.max(0, contentHeight - vScrollbarTrackHeight);
+    const scrollbarHeight = Math.max(
+      20,
+      (vScrollbarTrackHeight / contentHeight) * vScrollbarTrackHeight,
+    );
+
+    const hasHScrollbar = layout.hasHorizontalScrollbar;
+    const hScrollbarWidth = Math.max(
+      20,
+      (layout.viewWidth / layout.totalContentWidth) * layout.viewWidth,
+    );
+    const maxScrollLeft = layout.maxScrollLeft;
+
+    return {
+      maxScroll,
+      scrollbarHeight,
+      scrollbarY: 0, // 会在获取时计算
+      maxScrollLeft,
+      hScrollbarWidth,
+      scrollbarX: 0, // 会在获取时计算
+      hasHScrollbar,
+      hasVScrollbar,
+      vScrollbarTrackHeight,
+      viewWidth: layout.viewWidth,
+    };
+  }
+
+  private _getLayout(): RenderLayout {
+    if (this._layout) return this._layout;
+    this._layout = this._buildRenderLayout();
+    return this._layout;
+  }
+
+  private _buildRenderLayout(): RenderLayout {
+    const rowHeight = this._estimatedRowHeight;
+    const minRowHeight = this._style.minRowHeight ?? 40;
+    const maxRowHeight = this._style.maxRowHeight ?? 0;
+
+    let headerHeight = this._style.headerHeight;
+    if (headerHeight === undefined) {
+      const headerPadding = parsePadding(
+        this._style.headerCellPadding ?? [5, 10],
+      );
+      headerHeight = 14 + headerPadding.top + headerPadding.bottom;
+    }
+    headerHeight ??= 50;
+
+    const {
+      top: paddingTop,
+      right: paddingRight,
+      bottom: paddingBottom,
+      left: paddingLeft,
+    } = parsePadding(this._style.tablePadding ?? 0);
+    const scrollbarWidth = this._style.scrollbarWidth ?? 12;
+    const canvasHeight = this.el.clientHeight || 400;
+    const canvasWidth = this.el.clientWidth || 800;
+    const verticalPadding = paddingTop + paddingBottom;
+    const horizontalPadding = paddingLeft + paddingRight;
+
+    const contentHeight =
+      headerHeight + this._totalContentHeight + verticalPadding;
+    const hasVerticalScrollbar = contentHeight > canvasHeight;
+
+    // 计算列宽
+    const setWidths = this._columns.filter((col) => col.width !== undefined);
+    const unsetCount = this._columns.length - setWidths.length;
+    const assignedWidth = setWidths.reduce(
+      (sum, col) => sum + (col.width ?? 0),
+      0,
+    );
+    const availableWidth =
+      canvasWidth -
+      horizontalPadding -
+      (hasVerticalScrollbar ? scrollbarWidth : 0) -
+      assignedWidth;
+    const avgWidth =
+      unsetCount > 0 ? Math.max(100, availableWidth / unsetCount) : 100;
+    const columnWidths = this._columns.map((col) => col.width ?? avgWidth);
+    const totalContentWidth =
+      columnWidths.reduce((sum, w) => sum + w, 0) + horizontalPadding;
+
+    const viewWidth = hasVerticalScrollbar
+      ? canvasWidth - scrollbarWidth
+      : canvasWidth;
+    const hasHorizontalScrollbar = totalContentWidth > viewWidth;
+    const horizontalScrollbarHeight = hasHorizontalScrollbar
+      ? scrollbarWidth
+      : 0;
+
+    const tempViewHeight = canvasHeight - horizontalScrollbarHeight;
+    const maxScroll = Math.max(0, contentHeight - tempViewHeight);
+    const contentWidth = viewWidth - horizontalPadding;
+    const maxScrollLeft = Math.max(0, totalContentWidth - viewWidth);
+    this.scrollLeft = Math.min(maxScrollLeft, this.scrollLeft);
+
+    // 计算固定列宽度
+    const fixedWidths = this._columns.reduce(
+      (sum, col, i) => {
+        if (col.fixed === "left") sum.left += columnWidths[i];
+        if (col.fixed === "right") sum.right += columnWidths[i];
+        return sum;
+      },
+      { left: 0, right: 0 },
+    );
+
+    return {
+      rowHeight,
+      minRowHeight,
+      maxRowHeight,
+      headerHeight,
+      paddingTop,
+      paddingRight,
+      paddingBottom,
+      paddingLeft,
+      scrollbarWidth,
+      canvasWidth,
+      canvasHeight,
+      columnWidths,
+      totalContentWidth,
+      leftFixedWidth: fixedWidths.left,
+      rightFixedWidth: fixedWidths.right,
+      hasHorizontalScrollbar,
+      viewWidth,
+      horizontalScrollbarHeight,
+      contentWidth,
+      contentHeight,
+      maxScroll,
+      maxScrollLeft,
+      useDynamicRowHeight: this._useDynamicRowHeight,
+    };
+  }
+
+  private _initEvents() {
+    // 鼠标滚轮
+    this.el.onwheel = (e) => {
+      e.preventDefault();
+      const horizontalDelta = Math.abs(e.deltaX) > 0 ? e.deltaX : e.deltaY;
+      if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        this._handleHorizontalScroll(horizontalDelta);
+      } else {
+        this._handleScroll(e.deltaY);
+      }
+    };
+
+    // 鼠标按下
+    this.el.onmousedown = (e) => {
+      if (e.buttons !== 1) return;
+      this._handleMouseDown(e);
+    };
+
+    // 鼠标移动
+    this.el.onmousemove = (e) => {
+      this._handleMouseMove(e);
+    };
+
+    // 鼠标离开
+    this.el.onmouseleave = () => {
+      this._handleMouseLeave();
+    };
+
+    // 鼠标抬起
+    this.el.onmouseup = () => {
+      this._handleMouseUp();
+    };
+
+    // 全局鼠标移动（处理拖拽超出 canvas）
+    window.addEventListener("mousemove", (e) => {
+      if (this.isDraggingVScrollbar || this.isDraggingHScrollbar) {
+        this._handleDragMove(e);
+      }
+    });
+
+    // 全局鼠标抬起
+    window.addEventListener("mouseup", () => {
+      if (this.isDraggingVScrollbar || this.isDraggingHScrollbar) {
+        this._handleMouseUp();
+      }
+    });
+  }
+
+  private _handleMouseDown(e: MouseEvent) {
+    const scrollbarWidth = this._style.scrollbarWidth ?? 12;
+    const canvasWidth = this.el.clientWidth || 800;
+    const canvasHeight = this.el.clientHeight || 400;
+    const info = this._getScrollbarInfo();
+    const vScrollbarTrackHeight =
+      canvasHeight - (info.hasHScrollbar ? scrollbarWidth : 0);
+
+    // 检测垂直滚动条滑块点击
+    if (info.hasVScrollbar) {
+      const scrollbarY = this._calcScrollbarY(info);
+      if (
+        e.clientX >= canvasWidth - scrollbarWidth &&
+        e.clientY >= scrollbarY &&
+        e.clientY <= scrollbarY + info.scrollbarHeight
+      ) {
+        this.isDraggingVScrollbar = true;
+        this.isPressedVScrollbar = true;
+        this.dragStartY = e.clientY;
+        this.dragStartScrollTop = this.scrollTop;
+        this._startDragRenderLoop();
+        return;
+      }
+
+      // 检测垂直滚动条轨道点击（翻页）
+      if (e.clientX >= canvasWidth - scrollbarWidth) {
+        if (e.clientY < scrollbarY) {
+          this.scrollTop = Math.max(0, this.scrollTop - vScrollbarTrackHeight);
+        } else if (e.clientY > scrollbarY + info.scrollbarHeight) {
+          this.scrollTop = Math.min(
+            info.maxScroll,
+            this.scrollTop + vScrollbarTrackHeight,
+          );
+        }
+        this.isPressedVScrollbar = true;
+        this._scheduleRender();
+        this._emitEvent("scroll", this.scrollTop, this.scrollLeft);
+        return;
+      }
+    }
+
+    // 检测水平滚动条
+    if (info.hasHScrollbar) {
+      const scrollbarX = this._calcScrollbarX(info);
+      if (
+        e.clientY >= canvasHeight - scrollbarWidth &&
+        e.clientX >= scrollbarX &&
+        e.clientX <= scrollbarX + info.hScrollbarWidth
+      ) {
+        this.isDraggingHScrollbar = true;
+        this.isPressedHScrollbar = true;
+        this.dragStartX = e.clientX;
+        this.dragStartScrollLeft = this.scrollLeft;
+        this._startDragRenderLoop();
+        return;
+      }
+
+      // 水平滚动条轨道点击
+      if (e.clientY >= canvasHeight - scrollbarWidth) {
+        if (e.clientX < scrollbarX) {
+          this.scrollLeft = Math.max(0, this.scrollLeft - canvasWidth);
+        } else if (e.clientX > scrollbarX + info.hScrollbarWidth) {
+          this.scrollLeft = Math.min(
+            info.maxScrollLeft,
+            this.scrollLeft + canvasWidth,
+          );
+        }
+        this.isPressedHScrollbar = true;
+        this._scheduleRender();
+        this._emitEvent("scroll", this.scrollTop, this.scrollLeft);
+        return;
+      }
+    }
+
+    // 点击单元格
+    const rowInfo = this._getRowAtPoint(e.clientX, e.clientY);
+    if (rowInfo) {
+      this._emitEvent("click", rowInfo.row, rowInfo.index);
+    }
+  }
+
+  private _handleMouseMove(e: MouseEvent) {
+    // 处理拖拽
+    if (this.isDraggingVScrollbar || this.isDraggingHScrollbar) {
+      this._handleDragMove(e);
+      return;
+    }
+
+    // 更新 hover 状态
+    this._updateHoverState(e);
+  }
+
+  private _handleDragMove(e: MouseEvent) {
+    const info = this._getScrollbarInfo();
+    const scrollbarWidth = this._style.scrollbarWidth ?? 12;
+    const canvasHeight = this.el.clientHeight || 400;
+
+    if (this.isDraggingVScrollbar) {
+      const vScrollbarTrackHeight =
+        canvasHeight - (info.hasHScrollbar ? scrollbarWidth : 0);
+      const initialScrollbarY =
+        info.maxScroll > 0
+          ? (this.dragStartScrollTop / info.maxScroll) *
+            (vScrollbarTrackHeight - info.scrollbarHeight)
+          : 0;
+      const deltaY = e.clientY - this.dragStartY;
+      const newScrollbarY = initialScrollbarY + deltaY;
+      const ratio =
+        info.maxScroll > 0
+          ? newScrollbarY / (vScrollbarTrackHeight - info.scrollbarHeight)
+          : 0;
+      this.scrollTop = Math.max(
+        0,
+        Math.min(info.maxScroll, ratio * info.maxScroll),
+      );
+    } else if (this.isDraggingHScrollbar) {
+      const initialScrollbarX =
+        info.maxScrollLeft > 0
+          ? (this.dragStartScrollLeft / info.maxScrollLeft) *
+            (info.viewWidth - info.hScrollbarWidth)
+          : 0;
+      const deltaX = e.clientX - this.dragStartX;
+      const newScrollbarX = initialScrollbarX + deltaX;
+      const ratio =
+        info.maxScrollLeft > 0
+          ? newScrollbarX / (info.viewWidth - info.hScrollbarWidth)
+          : 0;
+      this.scrollLeft = Math.max(
+        0,
+        Math.min(info.maxScrollLeft, ratio * info.maxScrollLeft),
+      );
+    }
+  }
+
+  private _handleMouseUp() {
+    const wasDragging = this.isDraggingVScrollbar || this.isDraggingHScrollbar;
+    const needsRender =
+      this.isPressedVScrollbar || this.isPressedHScrollbar || wasDragging;
+
+    this.isDraggingVScrollbar = false;
+    this.isDraggingHScrollbar = false;
+    this.isPressedVScrollbar = false;
+    this.isPressedHScrollbar = false;
+    this._stopDragRenderLoop();
+
+    if (needsRender) {
+      this._scheduleRender();
+      this._emitEvent("scroll", this.scrollTop, this.scrollLeft);
+    }
+  }
+
+  private _handleMouseLeave() {
+    this.isHoveringVScrollbar = false;
+    this.isHoveringHScrollbar = false;
+    this.isPressedVScrollbar = false;
+    this.isPressedHScrollbar = false;
+    this.hoverRow = -1;
+    this.el.style.cursor = "default";
+    this._scheduleRender();
+  }
+
+  private _updateHoverState(e: MouseEvent) {
+    const scrollbarWidth = this._style.scrollbarWidth ?? 12;
+    const layout = this._getLayout();
+    const info = this._getScrollbarInfo();
+
+    const canvasWidth = layout.canvasWidth;
+    const canvasHeight = layout.canvasHeight;
+
+    const rect = this.el.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    let needsRender = false;
+
+    // 计算 hover 行
+    if (layout) {
+      const { headerHeight, paddingTop, paddingBottom } = layout;
+      const bodyTop = headerHeight + paddingTop;
+      const bodyBottom =
+        canvasHeight -
+        paddingBottom -
+        (layout.hasHorizontalScrollbar ? layout.horizontalScrollbarHeight : 0);
+
+      // 检查鼠标是否在内容区域内
+      if (y >= bodyTop && y < bodyBottom) {
+        const newHoverRow = this._getRowIndexAtY(y);
+
+        if (
+          newHoverRow >= 0 &&
+          newHoverRow < this._length &&
+          x < layout.viewWidth
+        ) {
+          if (this.hoverRow !== newHoverRow) {
+            this.hoverRow = newHoverRow;
+            this._emitEvent("hover", this._getValue(newHoverRow), newHoverRow);
+            needsRender = true;
+          }
+        } else if (this.hoverRow !== -1) {
+          this.hoverRow = -1;
+          needsRender = true;
+        }
+      } else if (this.hoverRow !== -1) {
+        this.hoverRow = -1;
+        needsRender = true;
+      }
+    }
+
+    // 检测垂直滚动条 hover
+    const wasHoveringV = this.isHoveringVScrollbar;
+    this.isHoveringVScrollbar =
+      info.hasVScrollbar &&
+      x >= canvasWidth - scrollbarWidth &&
+      y >= info.scrollbarY &&
+      y <= info.scrollbarY + info.scrollbarHeight;
+    if (wasHoveringV !== this.isHoveringVScrollbar) needsRender = true;
+
+    // 检测水平滚动条 hover
+    if (info.hasHScrollbar) {
+      const wasHoveringH = this.isHoveringHScrollbar;
+      const scrollbarX = this._calcScrollbarX(info);
+      this.isHoveringHScrollbar =
+        y >= canvasHeight - scrollbarWidth &&
+        y <= canvasHeight &&
+        x >= scrollbarX &&
+        x <= scrollbarX + info.hScrollbarWidth;
+      if (wasHoveringH !== this.isHoveringHScrollbar) needsRender = true;
+    } else if (this.isHoveringHScrollbar) {
+      this.isHoveringHScrollbar = false;
+      needsRender = true;
+    }
+
+    if (needsRender) {
+      this._scheduleRender();
+    }
+
+    // 更新光标
+    const isHoveringRow = this._getRowAtPoint(e.clientX, e.clientY) !== null;
+    const hasClickListener = this.eventListeners.click.size > 0;
+    this.el.style.cursor =
+      isHoveringRow && hasClickListener ? "pointer" : "default";
+  }
+
+  private _handleScroll(deltaY: number) {
+    const info = this._getScrollbarInfo();
+    this.scrollTop = Math.max(
+      0,
+      Math.min(info.maxScroll, this.scrollTop + deltaY),
+    );
+    this._scheduleRender();
+    this._emitEvent("scroll", this.scrollTop, this.scrollLeft);
+  }
+
+  private _handleHorizontalScroll(deltaX: number) {
+    const info = this._getScrollbarInfo();
+    this.scrollLeft = Math.max(
+      0,
+      Math.min(info.maxScrollLeft, this.scrollLeft + deltaX),
+    );
+    this._scheduleRender();
+    this._emitEvent("scroll", this.scrollTop, this.scrollLeft);
+  }
+
+  private _getRowAtPoint(clientX: number, clientY: number) {
+    const layout = this._getLayout();
+    const rect = this.el.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    const bodyTop = layout.paddingTop + layout.headerHeight;
+    const bodyBottom =
+      layout.canvasHeight -
+      layout.paddingBottom -
+      (layout.hasHorizontalScrollbar ? layout.horizontalScrollbarHeight : 0);
+    const bodyLeft = layout.paddingLeft;
+    const bodyRight = layout.viewWidth - layout.paddingRight;
+
+    if (x < bodyLeft || x >= bodyRight || y < bodyTop || y >= bodyBottom) {
+      return null;
+    }
+
+    const avgHeight = this._getAvgRowHeight();
+    const baseRowHeight = this._estimatedRowHeight;
+
+    // 计算起始索引 - 使用估算值
+    const estimatedStartIndex = Math.max(
+      0,
+      Math.floor(this.scrollTop / avgHeight) - 20,
+    );
+    const startIndex = estimatedStartIndex;
+
+    // 计算起始 Y 坐标
+    const startCumulativeHeight = this._getRowTop(startIndex);
+    let currentY = bodyTop + startCumulativeHeight - this.scrollTop;
+
+    let index = -1;
+    for (let rowIndex = startIndex; rowIndex < this._length; rowIndex++) {
+      if (currentY >= bodyBottom) {
+        break;
+      }
+
+      // 与 _drawRows 保持一致：使用 baseRowHeight 判断是否可见
+      if (currentY + baseRowHeight >= bodyTop || !this._useDynamicRowHeight) {
+        const row = this._getValue(rowIndex);
+        const actualRowHeight = this._useDynamicRowHeight
+          ? this._getRowHeight(rowIndex, row)
+          : baseRowHeight;
+
+        // 检查鼠标是否在此行的范围内
+        if (y >= currentY && y < currentY + actualRowHeight) {
+          index = rowIndex;
+          break;
+        }
+        currentY += actualRowHeight;
+      } else {
+        currentY += baseRowHeight;
+      }
+    }
+
+    if (index < 0 || index >= this._length) {
+      return null;
+    }
+
+    return { row: this._getValue(index), index };
+  }
+
   private _emitEvent<T extends VirtualTableEventType>(
     type: T,
     ...args: Parameters<VirtualTableEventHandlerMap[T]>
@@ -532,6 +1351,13 @@ class VirtualTable {
       );
       return;
     }
+    if (type === "rowHeightChanged") {
+      const [rowIndex, height] = args as [number, number];
+      this.eventListeners.rowHeightChanged.forEach((listener) =>
+        listener(rowIndex, height),
+      );
+      return;
+    }
     if (type === "hover") {
       this.eventListeners.hover.forEach((listener) => listener(row, index));
       return;
@@ -539,774 +1365,247 @@ class VirtualTable {
     this.eventListeners.click.forEach((listener) => listener(row, index));
   }
 
-  /**
-   * 根据鼠标位置获取行信息
-   * @param clientX 鼠标X坐标（视口坐标）
-   * @param clientY 鼠标Y坐标（视口坐标）
-   */
-  private _getRowAtPoint(clientX: number, clientY: number) {
-    const layout = this._layout ?? this._buildRenderLayout();
-    const rect = this.el.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-    const bodyTop = layout.paddingTop + layout.headerHeight;
-    const bodyBottom =
-      layout.canvasHeight -
-      layout.paddingBottom -
-      (layout.hasHorizontalScrollbar ? layout.horizontalScrollbarHeight : 0);
-    const bodyLeft = layout.paddingLeft;
-    const bodyRight = layout.viewWidth - layout.paddingRight;
-
-    if (x < bodyLeft || x >= bodyRight || y < bodyTop || y >= bodyBottom) {
-      return null;
-    }
-
-    const index = Math.floor((y - bodyTop + this.scrollTop) / layout.rowHeight);
-    if (index < 0 || index >= this._length) {
-      return null;
-    }
-
-    return {
-      row: this._getValue(index),
-      index,
-    };
-  }
-
-  /**
-   * 滚动到指定位置
-   * @param scrollTop 垂直滚动位置
-   * @param scrollLeft 水平滚动位置
-   */
-  scrollTo(scrollTop?: number, scrollLeft?: number) {
-    const { maxScroll, maxScrollLeft } = this._getScrollbarInfo();
-
-    if (scrollTop !== undefined) {
-      this.scrollTop = Math.max(0, Math.min(maxScroll, scrollTop));
-    }
-
-    if (scrollLeft !== undefined) {
-      this.scrollLeft = Math.max(0, Math.min(maxScrollLeft, scrollLeft));
-    }
-
-    this._render();
-    this._emitEvent("scroll", this.scrollTop, this.scrollLeft);
-  }
-
-  /**
-   * 处理拖动移动
-   * @param e 鼠标事件
-   */
-  private _handleDragMove(e: MouseEvent) {
-    if (this.isDraggingScrollbar) {
-      const { maxScroll, scrollbarHeight, hasHScrollbar } =
-        this._getScrollbarInfo();
-      const scrollbarWidth = this._style.scrollbarWidth ?? 12;
-      const vScrollbarTrackHeight =
-        this.el.clientHeight - (hasHScrollbar ? scrollbarWidth : 0);
-      const initialScrollbarY =
-        maxScroll > 0
-          ? (this.dragStartScrollTop / maxScroll) *
-            (vScrollbarTrackHeight - scrollbarHeight)
-          : 0;
-      const deltaY = e.clientY - this.dragStartY;
-      const newScrollbarY = initialScrollbarY + deltaY;
-      const ratio =
-        maxScroll > 0
-          ? newScrollbarY / (vScrollbarTrackHeight - scrollbarHeight)
-          : 0;
-      this.scrollTop = Math.max(0, Math.min(maxScroll, ratio * maxScroll));
+  private _scheduleRender() {
+    if (this._renderScheduled || this._suppressRender) return;
+    this._renderScheduled = true;
+    requestAnimationFrame(() => {
+      this._renderScheduled = false;
       this._render();
-      this._emitEvent("scroll", this.scrollTop, this.scrollLeft);
-    } else if (this.isDraggingHorizontalScrollbar) {
-      const { maxScrollLeft, hScrollbarWidth } = this._getScrollbarInfo();
-      const initialScrollbarX =
-        maxScrollLeft > 0
-          ? (this.dragStartScrollLeft / maxScrollLeft) *
-            (this.el.clientWidth - hScrollbarWidth)
-          : 0;
-      const deltaX = e.clientX - this.dragStartX;
-      const newScrollbarX = initialScrollbarX + deltaX;
-      const ratio =
-        maxScrollLeft > 0
-          ? newScrollbarX / (this.el.clientWidth - hScrollbarWidth)
-          : 0;
-      this.scrollLeft = Math.max(
-        0,
-        Math.min(maxScrollLeft, ratio * maxScrollLeft),
-      );
-      this._render();
-      this._emitEvent("scroll", this.scrollTop, this.scrollLeft);
-    }
-  }
-
-  /**
-   * 停止拖动
-   */
-  private _stopDragging() {
-    this.isDraggingScrollbar = false;
-    this.isDraggingHorizontalScrollbar = false;
-  }
-
-  /**
-   * 初始化事件
-   */
-  private _initEvents() {
-    // 处理鼠标滚轮事件
-    this.el.onwheel = (e) => {
-      e.preventDefault();
-      const horizontalDelta = Math.abs(e.deltaX) > 0 ? e.deltaX : e.deltaY;
-      if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-        this._handleHorizontalScroll(horizontalDelta);
-      } else {
-        this._handleScroll(e.deltaY);
-      }
-    };
-
-    // 处理鼠标按下事件
-    this.el.onmousedown = (e) => {
-      if (e.buttons !== 1) return;
-      const scrollbarWidth = this._style.scrollbarWidth ?? 12;
-      const canvasWidth = this.el.clientWidth || 800;
-      const canvasHeight = this.el.clientHeight || 400;
-      const {
-        maxScrollLeft,
-        hasHScrollbar,
-        maxScroll,
-        scrollbarHeight,
-        scrollbarY,
-      } = this._getScrollbarInfo();
-      const vScrollbarTrackHeight =
-        canvasHeight - (hasHScrollbar ? scrollbarWidth : 0);
-
-      // 检测是否点击了垂直滚动条滑块
-      if (
-        maxScroll > 0 &&
-        e.clientX >= canvasWidth - scrollbarWidth &&
-        e.clientY >= scrollbarY &&
-        e.clientY <= scrollbarY + scrollbarHeight
-      ) {
-        this.isDraggingScrollbar = true;
-        this.isPressedVScrollbar = true;
-        this.dragStartY = e.clientY;
-        this.dragStartScrollTop = this.scrollTop;
-        this._render();
-        return;
-      }
-
-      // 检测是否点击了垂直滚动条轨道（翻页）
-      if (
-        e.clientX >= canvasWidth - scrollbarWidth &&
-        e.clientY < canvasHeight - (hasHScrollbar ? scrollbarWidth : 0)
-      ) {
-        if (e.clientY < scrollbarY) {
-          // 点击滚动条上方 - 向上翻页
-          this.scrollTop = Math.max(0, this.scrollTop - vScrollbarTrackHeight);
-        } else if (e.clientY > scrollbarY + scrollbarHeight) {
-          // 点击滚动条下方 - 向下翻页
-          this.scrollTop = Math.min(
-            maxScroll,
-            this.scrollTop + vScrollbarTrackHeight,
-          );
-        }
-        this.isPressedVScrollbar = true;
-        this._render();
-        this._emitEvent("scroll", this.scrollTop, this.scrollLeft);
-        return;
-      }
-
-      // 检测是否点击了水平滚动条滑块
-      if (hasHScrollbar) {
-        const hScrollbarWidth = Math.max(
-          20,
-          (canvasWidth / (maxScrollLeft + canvasWidth)) * canvasWidth,
-        );
-        const hScrollbarX =
-          maxScrollLeft > 0
-            ? (this.scrollLeft / maxScrollLeft) *
-              (canvasWidth - hScrollbarWidth)
-            : 0;
-
-        if (
-          e.clientY >= canvasHeight - scrollbarWidth &&
-          e.clientX >= hScrollbarX &&
-          e.clientX <= hScrollbarX + hScrollbarWidth
-        ) {
-          this.isDraggingHorizontalScrollbar = true;
-          this.isPressedHScrollbar = true;
-          this.dragStartX = e.clientX;
-          this.dragStartScrollLeft = this.scrollLeft;
-          this._render();
-          return;
-        }
-
-        // 检测是否点击了水平滚动条轨道
-        if (e.clientY >= canvasHeight - scrollbarWidth) {
-          if (e.clientX < hScrollbarX) {
-            this.scrollLeft = Math.max(0, this.scrollLeft - canvasWidth);
-          } else if (e.clientX > hScrollbarX + hScrollbarWidth) {
-            this.scrollLeft = Math.min(
-              maxScrollLeft,
-              this.scrollLeft + canvasWidth,
-            );
-          }
-          this.isPressedHScrollbar = true;
-          this._render();
-          this._emitEvent("scroll", this.scrollTop, this.scrollLeft);
-          return;
-        }
-      }
-
-      const rowInfo = this._getRowAtPoint(e.clientX, e.clientY);
-      if (rowInfo) {
-        this._emitEvent("click", rowInfo.row, rowInfo.index);
-      }
-    };
-
-    // 处理鼠标移动事件
-    this.el.onmousemove = (e) => {
-      this._handleDragMove(e);
-      this._updateScrollbarHoverState(e);
-    };
-
-    // 处理鼠标离开事件
-    this.el.onmouseleave = () => {
-      this.isHoveringVScrollbar = false;
-      this.isHoveringHScrollbar = false;
-      this.isPressedVScrollbar = false;
-      this.isPressedHScrollbar = false;
-      this.hoverRow = -1;
-      this.el.style.cursor = "default";
-      this._render();
-    };
-
-    // 处理鼠标抬起事件
-    this.el.onmouseup = () => {
-      const needsRender =
-        this.isPressedVScrollbar ||
-        this.isPressedHScrollbar ||
-        this.isDraggingScrollbar ||
-        this.isDraggingHorizontalScrollbar;
-      this.isPressedVScrollbar = false;
-      this.isPressedHScrollbar = false;
-      this._stopDragging();
-      if (needsRender) {
-        this._render();
-      }
-    };
-
-    // 监听窗口鼠标移动事件
-    window.addEventListener("mousemove", (e) => {
-      this._handleDragMove(e);
-      this._updateScrollbarHoverState(e);
-    });
-
-    // 监听窗口鼠标抬起事件
-    window.addEventListener("mouseup", () => {
-      const needsRender =
-        this.isPressedVScrollbar ||
-        this.isPressedHScrollbar ||
-        this.isDraggingScrollbar ||
-        this.isDraggingHorizontalScrollbar;
-      this.isPressedVScrollbar = false;
-      this.isPressedHScrollbar = false;
-      this._stopDragging();
-      if (needsRender) {
-        this._render();
-      }
     });
   }
 
-  /**
-   * 更新滚动条hover状态
-   */
-  private _updateScrollbarHoverState(e: MouseEvent) {
-    const scrollbarWidth = this._style.scrollbarWidth ?? 12;
-    const canvasWidth = this.el.clientWidth || 800;
-    const canvasHeight = this.el.clientHeight || 400;
-    const {
-      hasHScrollbar,
-      maxScroll,
-      scrollbarHeight,
-      scrollbarY,
-      hScrollbarWidth,
-      scrollbarX,
-    } = this._getScrollbarInfo();
+  private _render() {
+    if (this._suppressRender) return;
 
-    let needsRender = false;
+    this.ctx ??= this.el.getContext("2d");
+    if (!this.ctx) return;
 
-    // 计算hover行
-    const rect = this.el.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const layout = this._layout;
-    if (layout) {
-      const { rowHeight, headerHeight, paddingTop } = layout;
-      const newHoverRow = Math.floor(
-        (y - headerHeight - paddingTop + this.scrollTop) / rowHeight,
-      );
-      if (
-        newHoverRow >= 0 &&
-        newHoverRow < this._length &&
-        x < layout.viewWidth
-      ) {
-        if (this.hoverRow !== newHoverRow) {
-          this.hoverRow = newHoverRow;
-          this._emitEvent("hover", this._getValue(newHoverRow), newHoverRow);
-          needsRender = true;
-        }
-      } else if (this.hoverRow !== -1) {
-        this.hoverRow = -1;
-        needsRender = true;
-      }
+    this._stats.renderCount++;
+
+    const layout = this._getLayout();
+    this._layout = layout;
+
+    // 设置 Canvas 尺寸（只有改变时才设置，避免触发 ResizeObserver）
+    const dpr = window.devicePixelRatio || 1;
+    const newWidth = layout.canvasWidth * dpr;
+    const newHeight = layout.canvasHeight * dpr;
+    if (this.el.width !== newWidth || this.el.height !== newHeight) {
+      this.el.width = newWidth;
+      this.el.height = newHeight;
+      this.el.style.width = `${layout.canvasWidth}px`;
+      this.el.style.height = `${layout.canvasHeight}px`;
     }
 
-    // 检测垂直滚动条hover
-    const wasHoveringV = this.isHoveringVScrollbar;
-    this.isHoveringVScrollbar =
-      maxScroll > 0 &&
-      x >= canvasWidth - scrollbarWidth &&
-      y >= scrollbarY &&
-      y <= scrollbarY + scrollbarHeight;
+    this.ctx.scale(dpr, dpr);
+    this.ctx.clearRect(0, 0, layout.canvasWidth, layout.canvasHeight);
 
-    if (wasHoveringV !== this.isHoveringVScrollbar) {
-      needsRender = true;
-    }
+    const font =
+      this._style.font ??
+      "14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    this.ctx.font = font;
 
-    // 检测水平滚动条hover
-    if (hasHScrollbar) {
-      const wasHoveringH = this.isHoveringHScrollbar;
-      this.isHoveringHScrollbar =
-        y >= canvasHeight - scrollbarWidth &&
-        y <= canvasHeight &&
-        x >= scrollbarX &&
-        x <= scrollbarX + hScrollbarWidth;
-
-      if (wasHoveringH !== this.isHoveringHScrollbar) {
-        needsRender = true;
-      }
-    } else if (this.isHoveringHScrollbar) {
-      this.isHoveringHScrollbar = false;
-      needsRender = true;
-    }
-
-    if (needsRender) {
-      this._render();
-    }
-
-    const isHoveringRow = this._getRowAtPoint(e.clientX, e.clientY) !== null;
-    const hasClickListener = this.eventListeners.click.size > 0;
-    this.el.style.cursor =
-      isHoveringRow && hasClickListener ? "pointer" : "default";
+    // 绘制
+    this._drawRows(this.ctx, layout);
+    this._drawHeader(this.ctx, layout);
+    this._drawFixedColumnShadows(this.ctx, layout);
+    this._drawVerticalDividers(this.ctx, layout);
+    this._drawScrollbars(this.ctx, layout);
+    this._drawOuterBorder(this.ctx, layout);
   }
 
   /**
-   * 处理垂直滚动
-   * @param deltaY 滚动 delta 值
-   */
-  private _handleScroll(deltaY: number) {
-    const { maxScroll } = this._getScrollbarInfo();
-    this.scrollTop = Math.max(0, Math.min(maxScroll, this.scrollTop + deltaY));
-    this._render();
-    this._emitEvent("scroll", this.scrollTop, this.scrollLeft);
-  }
-
-  /**
-   * 处理水平滚动
-   * @param deltaX 滚动 delta 值
-   */
-  private _handleHorizontalScroll(deltaX: number) {
-    const { maxScrollLeft } = this._getScrollbarInfo();
-    this.scrollLeft = Math.max(
-      0,
-      Math.min(maxScrollLeft, this.scrollLeft + deltaX),
-    );
-    this._render();
-    this._emitEvent("scroll", this.scrollTop, this.scrollLeft);
-  }
-
-  /**
-   * 获取滚动条信息
-   * @returns 滚动条信息对象
-   */
-  private _getScrollbarInfo() {
-    let rowHeight = this._style.rowHeight;
-    if (rowHeight === undefined) {
-      const cellPadding = parsePadding(this._style.cellPadding ?? [5, 10]);
-      rowHeight = 14 + cellPadding.top + cellPadding.bottom;
-    }
-    rowHeight ??= 40;
-    let headerHeight = this._style.headerHeight;
-    if (headerHeight === undefined) {
-      const headerPadding = parsePadding(
-        this._style.headerCellPadding ?? [5, 10],
-      );
-      headerHeight = 14 + headerPadding.top + headerPadding.bottom;
-    }
-    headerHeight ??= 50;
-    const {
-      top: paddingTop,
-      right: paddingRight,
-      bottom: paddingBottom,
-      left: paddingLeft,
-    } = parsePadding(this._style.tablePadding);
-    const scrollbarWidth = this._style.scrollbarWidth ?? 12;
-    const canvasHeight = this.el.clientHeight || 400;
-    const canvasWidth = this.el.clientWidth || 800;
-    const verticalPadding = paddingTop + paddingBottom;
-    const horizontalPadding = paddingLeft + paddingRight;
-    const contentHeight =
-      headerHeight + this._length * rowHeight + verticalPadding;
-    // 先假设没有水平滚动条，判断是否有垂直滚动条
-    const hasVScrollbar = contentHeight > canvasHeight;
-
-    // 计算列宽
-    const setWidths = this._columns.filter((col) => col.width !== undefined);
-    const unsetCount = this._columns.length - setWidths.length;
-    const assignedWidth = setWidths.reduce(
-      (sum, col) => sum + (col.width ?? 0),
-      0,
-    );
-    const availableWidthForColumns =
-      canvasWidth -
-      horizontalPadding -
-      (hasVScrollbar ? scrollbarWidth : 0) -
-      assignedWidth;
-    const avgWidth =
-      unsetCount > 0
-        ? Math.max(100, availableWidthForColumns / unsetCount)
-        : 100;
-    const columnWidths = this._columns.map((col) => col.width ?? avgWidth);
-    const totalContentWidth = Number(
-      (columnWidths.reduce((sum, w) => sum + w, 0) + horizontalPadding).toFixed(
-        2,
-      ),
-    );
-
-    // 计算滚动信息
-    const viewWidth = hasVScrollbar
-      ? canvasWidth - scrollbarWidth
-      : canvasWidth;
-    const hasHScrollbar = totalContentWidth > viewWidth;
-    const horizontalScrollbarHeight = hasHScrollbar ? scrollbarWidth : 0;
-    const vScrollbarTrackHeight = canvasHeight - horizontalScrollbarHeight;
-    // 计算实际可见高度（考虑水平滚动条占用底部空间）
-    const maxScroll = Math.max(0, contentHeight - vScrollbarTrackHeight);
-    const scrollbarHeight = Math.max(
-      20,
-      (vScrollbarTrackHeight / contentHeight) * vScrollbarTrackHeight,
-    );
-    const scrollbarY =
-      maxScroll > 0
-        ? (this.scrollTop / maxScroll) *
-          (vScrollbarTrackHeight - scrollbarHeight)
-        : 0;
-
-    const maxScrollLeft = Math.max(0, totalContentWidth - viewWidth);
-    const hScrollbarWidth = Math.max(
-      20,
-      (viewWidth / totalContentWidth) * viewWidth,
-    );
-    const scrollbarX =
-      maxScrollLeft > 0
-        ? (this.scrollLeft / maxScrollLeft) * (viewWidth - hScrollbarWidth)
-        : 0;
-
-    return {
-      maxScroll,
-      scrollbarHeight,
-      scrollbarY,
-      maxScrollLeft,
-      hScrollbarWidth,
-      scrollbarX,
-      hasHScrollbar,
-      hasVScrollbar: maxScroll > 0,
-    };
-  }
-
-  /**
-   * 构建渲染布局
-   * @returns 渲染布局对象
-   */
-  private _buildRenderLayout(): RenderLayout {
-    let rowHeight = this._style.rowHeight;
-    if (rowHeight === undefined) {
-      const cellPadding = parsePadding(this._style.cellPadding ?? [5, 10]);
-      rowHeight = 14 + cellPadding.top + cellPadding.bottom;
-    }
-    rowHeight ??= 40;
-    let headerHeight = this._style.headerHeight;
-    if (headerHeight === undefined) {
-      const headerPadding = parsePadding(
-        this._style.headerCellPadding ?? [5, 10],
-      );
-      headerHeight = 14 + headerPadding.top + headerPadding.bottom;
-    }
-    headerHeight ??= 50;
-    const {
-      top: paddingTop,
-      right: paddingRight,
-      bottom: paddingBottom,
-      left: paddingLeft,
-    } = parsePadding(this._style.tablePadding);
-    const scrollbarWidth = this._style.scrollbarWidth ?? 12;
-    const canvasWidth = this.el.clientWidth || 800;
-    const canvasHeight = this.el.clientHeight || 400;
-    const verticalPadding = paddingTop + paddingBottom;
-    const horizontalPadding = paddingLeft + paddingRight;
-    const contentHeight =
-      headerHeight + this._length * rowHeight + verticalPadding;
-    // 先假设没有水平滚动条，判断是否有垂直滚动条
-    const hasVerticalScrollbar = contentHeight > canvasHeight;
-
-    // 计算列宽
-    const setWidths = this._columns.filter((col) => col.width !== undefined);
-    const unsetCount = this._columns.length - setWidths.length;
-    const assignedWidth = setWidths.reduce(
-      (sum, col) => sum + (col.width ?? 0),
-      0,
-    );
-    const availableWidthForColumns =
-      canvasWidth -
-      horizontalPadding -
-      (hasVerticalScrollbar ? scrollbarWidth : 0) -
-      assignedWidth;
-    const avgWidth =
-      unsetCount > 0
-        ? Math.max(100, availableWidthForColumns / unsetCount)
-        : 100;
-
-    const columnWidths = this._columns.map((col) => col.width ?? avgWidth);
-    const totalContentWidth = Number(
-      (columnWidths.reduce((sum, w) => sum + w, 0) + horizontalPadding).toFixed(
-        2,
-      ),
-    );
-
-    // 计算固定列宽度
-    const fixedWidths = this._columns.reduce(
-      (sum, col, i) => {
-        if (col.fixed === "left") {
-          sum.left += columnWidths[i];
-        }
-        if (col.fixed === "right") {
-          sum.right += columnWidths[i];
-        }
-        return sum;
-      },
-      { left: 0, right: 0 },
-    );
-
-    // 计算布局信息
-    const viewWidth = hasVerticalScrollbar
-      ? canvasWidth - scrollbarWidth
-      : canvasWidth;
-    const hasHorizontalScrollbar = totalContentWidth > viewWidth;
-    const horizontalScrollbarHeight = hasHorizontalScrollbar
-      ? scrollbarWidth
-      : 0;
-    // 计算实际可见高度（考虑水平滚动条占用底部空间）
-    const tempViewHeight = canvasHeight - horizontalScrollbarHeight;
-    const maxScroll = Math.max(0, contentHeight - tempViewHeight);
-    const contentWidth = viewWidth - horizontalPadding;
-    const maxScrollLeft = Math.max(0, totalContentWidth - viewWidth);
-    this.scrollLeft = Math.min(maxScrollLeft, this.scrollLeft);
-
-    return {
-      rowHeight,
-      headerHeight,
-      paddingTop,
-      paddingRight,
-      paddingBottom,
-      paddingLeft,
-      scrollbarWidth,
-      canvasWidth,
-      canvasHeight,
-      columnWidths,
-      totalContentWidth,
-      leftFixedWidth: fixedWidths.left,
-      rightFixedWidth: fixedWidths.right,
-      hasHorizontalScrollbar,
-      viewWidth,
-      horizontalScrollbarHeight,
-      contentWidth,
-      contentHeight,
-      maxScroll,
-      maxScrollLeft,
-    };
-  }
-
-  /**
-   * 绘制表格行
-   * @param ctx Canvas 2D 上下文
-   * @param layout 渲染布局
+   * 绘制行
    */
   private _drawRows(ctx: CanvasRenderingContext2D, layout: RenderLayout) {
+    const { headerHeight, paddingTop } = layout;
+    const visibleHeight =
+      layout.canvasHeight -
+      (layout.hasHorizontalScrollbar ? layout.horizontalScrollbarHeight : 0);
+    const bodyTop = paddingTop + headerHeight;
+
+    const baseRowHeight = this._estimatedRowHeight;
+    const avgHeight = this._useDynamicRowHeight
+      ? this._getAvgRowHeight()
+      : baseRowHeight;
+
+    const estimatedStartIndex = Math.max(
+      0,
+      Math.floor(this.scrollTop / avgHeight) - 20,
+    );
+    const startIndex = estimatedStartIndex;
+
+    const endIndex = Math.min(
+      this._length,
+      startIndex + Math.ceil(visibleHeight / avgHeight) + 40,
+    );
+
+    // 计算起始 Y 坐标
+    let currentY = bodyTop + this._getRowTop(startIndex) - this.scrollTop;
+
+    for (let rowIndex = startIndex; rowIndex < endIndex; rowIndex++) {
+      if (currentY >= bodyTop + visibleHeight) {
+        break;
+      }
+
+      if (currentY + baseRowHeight >= bodyTop || !this._useDynamicRowHeight) {
+        const row = this._getValue(rowIndex);
+        const actualRowHeight = this._useDynamicRowHeight
+          ? this._getRowHeight(rowIndex, row)
+          : baseRowHeight;
+        this._drawRow(ctx, layout, row, rowIndex, currentY, actualRowHeight);
+        currentY += actualRowHeight;
+      } else {
+        currentY += baseRowHeight;
+      }
+    }
+  }
+
+  /**
+   * 绘制单行
+   */
+  private _drawRow(
+    ctx: CanvasRenderingContext2D,
+    layout: RenderLayout,
+    row: Record<string, any>,
+    rowIndex: number,
+    y: number,
+    rowHeight: number,
+  ) {
     const {
-      rowHeight,
-      headerHeight,
-      paddingTop,
-      paddingRight,
       paddingLeft,
+      paddingRight,
       contentWidth,
       viewWidth,
+      leftFixedWidth,
+      rightFixedWidth,
     } = layout;
     const baseTextColor = this._style.textColor ?? "#333333";
     const baseFont =
       this._style.font ??
       "14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-    // 计算实际可视区域高度（减去水平滚动条占用的空间）
-    const visibleHeight =
-      layout.canvasHeight -
-      (layout.hasHorizontalScrollbar ? layout.horizontalScrollbarHeight : 0);
-    const startIndex = Math.max(0, Math.floor(this.scrollTop / rowHeight));
-    const endIndex = Math.min(
-      this._length,
-      Math.ceil(
-        (this.scrollTop + visibleHeight - paddingTop - headerHeight) /
-          rowHeight,
-      ) + 1,
-    );
 
-    for (let rowIndex = startIndex; rowIndex < endIndex; rowIndex++) {
-      const row = this._getValue(rowIndex);
-      const y =
-        paddingTop + headerHeight + rowIndex * rowHeight - this.scrollTop;
-      const middleStartX = paddingLeft + layout.leftFixedWidth;
-      const middleEndX = viewWidth - paddingRight - layout.rightFixedWidth;
-      const middleWidth = Math.max(0, middleEndX - middleStartX);
-      const rowStyle = this._style.rowStyleResolver?.(row, rowIndex);
-      let rowBgColor =
-        rowStyle?.backgroundColor ??
-        (rowIndex % 2 === 0
-          ? (this._style.rowBackgroundColor ?? "#ffffff")
-          : (this._style.rowAltBackgroundColor ?? "#fafafa"));
-      // hover行背景色
-      if (this.hoverRow === rowIndex) {
-        rowBgColor =
-          this._style.rowHoverBackgroundColor ??
-          rowStyle?.hoverBackgroundColor ??
-          "#f5f5f5";
-      }
-      const rowTextColor = rowStyle?.textColor ?? baseTextColor;
-      const rowBorderColor =
-        rowStyle?.borderColor ??
-        this._style.horizontalDividerColor ??
-        this._style.borderColor ??
-        "#f0f0f0";
+    // 获取行样式
+    const rowStyle = this._style.rowStyleResolver?.(row, rowIndex);
+    let rowBgColor =
+      rowStyle?.backgroundColor ??
+      (rowIndex % 2 === 0
+        ? (this._style.rowBackgroundColor ?? "#ffffff")
+        : (this._style.rowAltBackgroundColor ?? "#fafafa"));
+    if (this.hoverRow === rowIndex) {
+      rowBgColor =
+        this._style.rowHoverBackgroundColor ??
+        rowStyle?.hoverBackgroundColor ??
+        "#f5f5f5";
+    }
+    const rowTextColor = rowStyle?.textColor ?? baseTextColor;
+    const rowBorderColor =
+      rowStyle?.borderColor ??
+      this._style.horizontalDividerColor ??
+      this._style.borderColor ??
+      "#f0f0f0";
 
-      // 绘制行背景
-      ctx.fillStyle = rowBgColor;
-      ctx.fillRect(paddingLeft, y, contentWidth, rowHeight);
+    // 绘制行背景
+    ctx.fillStyle = rowBgColor;
+    ctx.fillRect(paddingLeft, y, contentWidth, rowHeight);
+
+    // 绘制单元格
+    const middleStartX = paddingLeft + leftFixedWidth;
+    const middleEndX = viewWidth - paddingRight - rightFixedWidth;
+    const middleWidth = Math.max(0, middleEndX - middleStartX);
+
+    // 绘制左侧固定列
+    if (leftFixedWidth > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(paddingLeft, y, leftFixedWidth, rowHeight);
+      ctx.clip();
       ctx.fillStyle = rowTextColor;
       ctx.font = rowStyle?.font ?? baseFont;
-
-      // 绘制左侧固定列
-      if (layout.leftFixedWidth > 0) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(paddingLeft, y, layout.leftFixedWidth, rowHeight);
-        ctx.clip();
-        ctx.fillStyle = rowBgColor;
-        ctx.fillRect(paddingLeft, y, layout.leftFixedWidth, rowHeight);
-        ctx.fillStyle = rowTextColor;
-        let x = paddingLeft;
-        this._columns.forEach((col, i) => {
-          if (col.fixed === "left") {
-            const value = this._getCellDisplayValue(col, row, rowIndex);
-            this._drawCellText(
-              ctx,
-              value,
-              x,
-              y,
-              layout.columnWidths[i],
-              rowHeight,
-            );
-            x += layout.columnWidths[i];
-          }
-        });
-        ctx.restore();
-      }
-
-      // 绘制中间可滚动列
-      if (middleWidth > 0) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(middleStartX, y, middleWidth, rowHeight);
-        ctx.clip();
-        let middleX = middleStartX - this.scrollLeft;
-        this._columns.forEach((col, i) => {
-          if (!col.fixed) {
-            const value = this._getCellDisplayValue(col, row, rowIndex);
-            this._drawCellText(
-              ctx,
-              value,
-              middleX,
-              y,
-              layout.columnWidths[i],
-              rowHeight,
-            );
-            middleX += layout.columnWidths[i];
-          }
-        });
-        ctx.restore();
-      }
-
-      // 绘制右侧固定列
-      if (layout.rightFixedWidth > 0) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(
-          viewWidth - paddingRight - layout.rightFixedWidth,
-          y,
-          layout.rightFixedWidth,
-          rowHeight,
-        );
-        ctx.clip();
-        ctx.fillStyle = rowBgColor;
-        ctx.fillRect(
-          viewWidth - paddingRight - layout.rightFixedWidth,
-          y,
-          layout.rightFixedWidth,
-          rowHeight,
-        );
-        ctx.fillStyle = rowTextColor;
-        let rightX = viewWidth - paddingRight - layout.rightFixedWidth;
-        this._columns.forEach((col, i) => {
-          if (col.fixed === "right") {
-            const value = this._getCellDisplayValue(col, row, rowIndex);
-            this._drawCellText(
-              ctx,
-              value,
-              rightX,
-              y,
-              layout.columnWidths[i],
-              rowHeight,
-            );
-            rightX += layout.columnWidths[i];
-          }
-        });
-        ctx.restore();
-      }
-
-      // 绘制行底部边框
-      const horizontalDividerWidth = this._style.horizontalDividerWidth ?? 1;
-      ctx.lineWidth = horizontalDividerWidth;
-      ctx.strokeStyle = rowBorderColor;
-      ctx.beginPath();
-      ctx.moveTo(paddingLeft, y + rowHeight);
-      ctx.lineTo(viewWidth - paddingRight, y + rowHeight);
-      ctx.stroke();
+      let x = paddingLeft;
+      this._columns.forEach((col, i) => {
+        if (col.fixed === "left") {
+          const value = this._getCellDisplayValue(col, row, rowIndex);
+          this._drawCellText(
+            ctx,
+            value,
+            x,
+            y,
+            layout.columnWidths[i],
+            rowHeight,
+            col.wrap,
+          );
+          x += layout.columnWidths[i];
+        }
+      });
+      ctx.restore();
     }
+
+    // 绘制中间列
+    if (middleWidth > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(middleStartX, y, middleWidth, rowHeight);
+      ctx.clip();
+      ctx.fillStyle = rowTextColor;
+      ctx.font = rowStyle?.font ?? baseFont;
+      let x = middleStartX - this.scrollLeft;
+      this._columns.forEach((col, i) => {
+        if (!col.fixed) {
+          const value = this._getCellDisplayValue(col, row, rowIndex);
+          this._drawCellText(
+            ctx,
+            value,
+            x,
+            y,
+            layout.columnWidths[i],
+            rowHeight,
+            col.wrap,
+          );
+          x += layout.columnWidths[i];
+        }
+      });
+      ctx.restore();
+    }
+
+    // 绘制右侧固定列
+    if (rightFixedWidth > 0) {
+      ctx.save();
+      const rightX = viewWidth - paddingRight - rightFixedWidth;
+      ctx.beginPath();
+      ctx.rect(rightX, y, rightFixedWidth, rowHeight);
+      ctx.clip();
+      ctx.fillStyle = rowTextColor;
+      ctx.font = rowStyle?.font ?? baseFont;
+      let x = rightX;
+      this._columns.forEach((col, i) => {
+        if (col.fixed === "right") {
+          const value = this._getCellDisplayValue(col, row, rowIndex);
+          this._drawCellText(
+            ctx,
+            value,
+            x,
+            y,
+            layout.columnWidths[i],
+            rowHeight,
+            col.wrap,
+          );
+          x += layout.columnWidths[i];
+        }
+      });
+      ctx.restore();
+    }
+
+    // 绘制行边框
+    ctx.strokeStyle = rowBorderColor;
+    ctx.lineWidth = this._style.horizontalDividerWidth ?? 1;
+    ctx.beginPath();
+    ctx.moveTo(paddingLeft, y + rowHeight);
+    ctx.lineTo(viewWidth - paddingRight, y + rowHeight);
+    ctx.stroke();
   }
 
   /**
    * 绘制单元格文本
-   * @param ctx Canvas 2D 上下文
-   * @param text 文本内容
-   * @param cellX 单元格X坐标
-   * @param cellY 单元格Y坐标
-   * @param cellWidth 单元格宽度
-   * @param cellHeight 单元格高度
    */
   private _drawCellText(
     ctx: CanvasRenderingContext2D,
@@ -1315,66 +1614,135 @@ class VirtualTable {
     cellY: number,
     cellWidth: number,
     cellHeight: number,
-    customPadding?: PaddingValue,
+    wrap?: boolean,
   ) {
     if (cellWidth <= 0) return;
-    const cellPaddingObj = parsePadding(
-      customPadding ?? this._style.cellPadding ?? [5, 10],
-    );
+
+    const cellPaddingObj = parsePadding(this._style.cellPadding ?? [5, 10]);
     const horizontalPadding = cellPaddingObj.left + cellPaddingObj.right;
-    // const verticalPadding = cellPaddingObj.top + cellPaddingObj.bottom;
     const textAlign = this._style.textAlign ?? "left";
     const maxTextWidth = Math.max(0, cellWidth - horizontalPadding);
-    let displayText = text;
 
     if (maxTextWidth <= 0) return;
-    // 文本过长时添加省略号
-    if (ctx.measureText(displayText).width > maxTextWidth) {
-      const ellipsis = "...";
-      const ellipsisWidth = ctx.measureText(ellipsis).width;
-      let low = 0;
-      let high = displayText.length;
-      while (low < high) {
-        const mid = Math.ceil((low + high) / 2);
-        const next = `${displayText.slice(0, mid)}${ellipsis}`;
-        if (ctx.measureText(next).width <= maxTextWidth) {
-          low = mid;
-        } else {
-          high = mid - 1;
-        }
+
+    const fontSize = 14;
+    const lineHeight = fontSize * 1.5;
+    const maxCellLines = this._style.maxCellLines ?? 0;
+
+    let displayLines: string[];
+    if (wrap) {
+      displayLines = this._wrapText(ctx, text, maxTextWidth);
+      if (maxCellLines > 0 && displayLines.length >= maxCellLines) {
+        displayLines = displayLines.slice(0, maxCellLines);
+        const lastLine = displayLines[displayLines.length - 1];
+        displayLines[displayLines.length - 1] = this._addEllipsis(
+          ctx,
+          lastLine,
+          maxTextWidth,
+        );
       }
-      displayText =
-        low > 0 && ellipsisWidth <= maxTextWidth
-          ? `${displayText.slice(0, low)}${ellipsis}`
-          : ellipsisWidth <= maxTextWidth
-            ? ellipsis
-            : "";
+    } else {
+      let displayText = text;
+      if (ctx.measureText(displayText).width > maxTextWidth) {
+        displayText = this._addEllipsis(ctx, displayText, maxTextWidth);
+      }
+      displayLines = [displayText];
     }
 
-    // 绘制文本
     ctx.save();
     ctx.beginPath();
     ctx.rect(cellX, cellY, cellWidth, cellHeight);
     ctx.clip();
     ctx.textAlign = textAlign;
     ctx.textBaseline = "top";
-    const textX =
-      textAlign === "center"
-        ? cellX + cellWidth / 2
-        : textAlign === "right"
-          ? cellX + cellWidth - cellPaddingObj.right
-          : cellX + cellPaddingObj.left;
-    // textBaseline="top" 时，textY 为文本顶部位置
-    const effectiveTopPadding = Math.min(cellPaddingObj.top, cellHeight - 10);
-    const textY = cellY + effectiveTopPadding;
-    ctx.fillText(displayText, textX, textY);
+
+    const totalTextHeight = displayLines.length * lineHeight;
+    const availableHeight =
+      cellHeight - cellPaddingObj.top - cellPaddingObj.bottom;
+    const centeredY = (availableHeight - totalTextHeight) / 2;
+    const textStartY = cellY + cellPaddingObj.top + Math.max(0, centeredY);
+
+    displayLines.forEach((line, lineIndex) => {
+      const textX =
+        textAlign === "center"
+          ? cellX + cellWidth / 2
+          : textAlign === "right"
+            ? cellX + cellWidth - cellPaddingObj.right
+            : cellX + cellPaddingObj.left;
+      const textY = textStartY + lineIndex * lineHeight;
+      ctx.fillText(line, textX, textY);
+    });
+
     ctx.restore();
   }
 
   /**
+   * 文本换行
+   */
+  private _wrapText(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number,
+  ): string[] {
+    if (!text || maxWidth <= 0) return [text];
+
+    const lines: string[] = [];
+    let currentLine = "";
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const testLine = currentLine + char;
+      const metrics = ctx.measureText(testLine);
+
+      if (metrics.width > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = char;
+      } else {
+        currentLine = testLine;
+      }
+    }
+
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+
+    return lines.length > 0 ? lines : [""];
+  }
+
+  /**
+   * 添加省略号
+   */
+  private _addEllipsis(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number,
+  ): string {
+    if (maxWidth <= 0) return "";
+
+    const ellipsis = "...";
+    const ellipsisWidth = ctx.measureText(ellipsis).width;
+    const availableWidth = maxWidth - ellipsisWidth;
+
+    if (availableWidth <= 0) return ellipsis;
+
+    let low = 0;
+    let high = text.length;
+
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      const testText = text.slice(0, mid);
+      if (ctx.measureText(testText).width <= availableWidth) {
+        low = mid;
+      } else {
+        high = mid - 1;
+      }
+    }
+
+    return low > 0 ? `${text.slice(0, low)}${ellipsis}` : ellipsis;
+  }
+
+  /**
    * 绘制表头
-   * @param ctx Canvas 2D 上下文
-   * @param layout 渲染布局
    */
   private _drawHeader(ctx: CanvasRenderingContext2D, layout: RenderLayout) {
     const {
@@ -1384,104 +1752,98 @@ class VirtualTable {
       contentWidth,
       headerHeight,
       viewWidth,
+      leftFixedWidth,
+      rightFixedWidth,
     } = layout;
-    const headerCellPadding = this._style.headerCellPadding ?? [5, 10];
-    // 绘制表头背景
+
+    // 表头背景
     ctx.fillStyle = this._style.headerBackgroundColor ?? "#f5f5f5";
     ctx.fillRect(paddingLeft, paddingTop, contentWidth, headerHeight);
 
-    // 设置文本样式
+    // 文本样式
     ctx.fillStyle = this._style.textColor ?? "#333333";
     ctx.font =
       this._style.headerFont ??
       "bold 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
     ctx.textBaseline = "middle";
 
-    let headerLeftFixedX = paddingLeft;
-    let headerRightFixedX = viewWidth - paddingRight - layout.rightFixedWidth;
-    const headerMiddleStartX = paddingLeft + layout.leftFixedWidth;
-    const headerMiddleEndX = viewWidth - paddingRight - layout.rightFixedWidth;
-    const headerMiddleWidth = Math.max(
-      0,
-      headerMiddleEndX - headerMiddleStartX,
-    );
-
-    // 绘制左侧固定列表头
-    if (layout.leftFixedWidth > 0) {
+    // 左侧固定列表头
+    if (leftFixedWidth > 0) {
       ctx.save();
       ctx.beginPath();
-      ctx.rect(paddingLeft, paddingTop, layout.leftFixedWidth, headerHeight);
+      ctx.rect(paddingLeft, paddingTop, leftFixedWidth, headerHeight);
       ctx.clip();
+      let x = paddingLeft;
       this._columns.forEach((col, i) => {
         if (col.fixed === "left") {
           this._drawCellText(
             ctx,
             col.name,
-            headerLeftFixedX,
+            x,
             paddingTop,
             layout.columnWidths[i],
             headerHeight,
-            headerCellPadding,
+            false,
           );
-          headerLeftFixedX += layout.columnWidths[i];
+          x += layout.columnWidths[i];
         }
       });
       ctx.restore();
     }
 
-    // 绘制中间可滚动列表头
-    if (headerMiddleWidth > 0) {
+    // 中间列表头
+    const middleStartX = paddingLeft + leftFixedWidth;
+    const middleEndX = viewWidth - paddingRight - rightFixedWidth;
+    const middleWidth = Math.max(0, middleEndX - middleStartX);
+    if (middleWidth > 0) {
       ctx.save();
       ctx.beginPath();
-      ctx.rect(headerMiddleStartX, paddingTop, headerMiddleWidth, headerHeight);
+      ctx.rect(middleStartX, paddingTop, middleWidth, headerHeight);
       ctx.clip();
-      let headerMiddleX = headerMiddleStartX - this.scrollLeft;
+      let x = middleStartX - this.scrollLeft;
       this._columns.forEach((col, i) => {
         if (!col.fixed) {
           this._drawCellText(
             ctx,
             col.name,
-            headerMiddleX,
+            x,
             paddingTop,
             layout.columnWidths[i],
             headerHeight,
-            headerCellPadding,
+            false,
           );
-          headerMiddleX += layout.columnWidths[i];
+          x += layout.columnWidths[i];
         }
       });
       ctx.restore();
     }
 
-    // 绘制右侧固定列表头
-    if (layout.rightFixedWidth > 0) {
+    // 右侧固定列表头
+    if (rightFixedWidth > 0) {
       ctx.save();
+      const rightX = viewWidth - paddingRight - rightFixedWidth;
       ctx.beginPath();
-      ctx.rect(
-        viewWidth - paddingRight - layout.rightFixedWidth,
-        paddingTop,
-        layout.rightFixedWidth,
-        headerHeight,
-      );
+      ctx.rect(rightX, paddingTop, rightFixedWidth, headerHeight);
       ctx.clip();
+      let x = rightX;
       this._columns.forEach((col, i) => {
         if (col.fixed === "right") {
           this._drawCellText(
             ctx,
             col.name,
-            headerRightFixedX,
+            x,
             paddingTop,
             layout.columnWidths[i],
             headerHeight,
-            headerCellPadding,
+            false,
           );
-          headerRightFixedX += layout.columnWidths[i];
+          x += layout.columnWidths[i];
         }
       });
       ctx.restore();
     }
 
-    // 绘制表头底部边框
+    // 表头底部边框
     ctx.strokeStyle = this._style.borderColor ?? "#e0e0e0";
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -1492,156 +1854,63 @@ class VirtualTable {
 
   /**
    * 绘制固定列阴影
-   * @param ctx Canvas 2D 上下文
-   * @param layout 渲染布局
    */
   private _drawFixedColumnShadows(
     ctx: CanvasRenderingContext2D,
     layout: RenderLayout,
   ) {
     const shadowWidth = 12;
-    const shadowTop = layout.paddingTop;
-    const shadowHeight =
-      layout.canvasHeight -
-      layout.paddingTop -
-      layout.paddingBottom -
-      (layout.hasHorizontalScrollbar ? layout.horizontalScrollbarHeight : 0);
+    const {
+      paddingTop,
+      paddingLeft,
+      canvasHeight,
+      paddingBottom,
+      horizontalScrollbarHeight,
+      leftFixedWidth,
+      rightFixedWidth,
+      viewWidth,
+      paddingRight,
+      maxScrollLeft,
+    } = layout;
 
-    // 绘制左侧固定列阴影
-    if (layout.leftFixedWidth > 0 && shadowHeight > 0 && this.scrollLeft > 0) {
-      const leftShadowX = layout.paddingLeft + layout.leftFixedWidth;
-      const leftShadow = ctx.createLinearGradient(
+    const shadowHeight =
+      canvasHeight - paddingTop - paddingBottom - horizontalScrollbarHeight;
+    if (shadowHeight <= 0) return;
+
+    // 左侧阴影
+    if (leftFixedWidth > 0 && this.scrollLeft > 0) {
+      const leftShadowX = paddingLeft + leftFixedWidth;
+      const gradient = ctx.createLinearGradient(
         leftShadowX,
         0,
         leftShadowX + shadowWidth,
         0,
       );
-      leftShadow.addColorStop(0, "rgba(0, 0, 0, 0.08)");
-      leftShadow.addColorStop(1, "rgba(0, 0, 0, 0)");
-      ctx.fillStyle = leftShadow;
-      ctx.fillRect(leftShadowX, shadowTop, shadowWidth, shadowHeight);
+      gradient.addColorStop(0, "rgba(0, 0, 0, 0.08)");
+      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(leftShadowX, paddingTop, shadowWidth, shadowHeight);
     }
 
-    // 绘制右侧固定列阴影
-    if (
-      layout.rightFixedWidth > 0 &&
-      shadowHeight > 0 &&
-      this.scrollLeft < layout.maxScrollLeft
-    ) {
+    // 右侧阴影
+    if (rightFixedWidth > 0 && this.scrollLeft < maxScrollLeft) {
       const rightShadowX =
-        layout.viewWidth -
-        layout.paddingRight -
-        layout.rightFixedWidth -
-        shadowWidth;
-      const rightShadow = ctx.createLinearGradient(
+        viewWidth - paddingRight - rightFixedWidth - shadowWidth;
+      const gradient = ctx.createLinearGradient(
         rightShadowX,
         0,
         rightShadowX + shadowWidth,
         0,
       );
-      rightShadow.addColorStop(0, "rgba(0, 0, 0, 0)");
-      rightShadow.addColorStop(1, "rgba(0, 0, 0, 0.08)");
-      ctx.fillStyle = rightShadow;
-      ctx.fillRect(rightShadowX, shadowTop, shadowWidth, shadowHeight);
-    }
-  }
-
-  /**
-   * 绘制滚动条
-   * @param ctx Canvas 2D 上下文
-   * @param layout 渲染布局
-   */
-  private _drawScrollbars(ctx: CanvasRenderingContext2D, layout: RenderLayout) {
-    const vScrollbarTrackHeight =
-      layout.canvasHeight -
-      (layout.hasHorizontalScrollbar ? layout.horizontalScrollbarHeight : 0);
-    const scrollbarHeight = Math.max(
-      20,
-      (vScrollbarTrackHeight / layout.contentHeight) * vScrollbarTrackHeight,
-    );
-    const scrollbarY =
-      layout.maxScroll > 0
-        ? (this.scrollTop / layout.maxScroll) *
-          (vScrollbarTrackHeight - scrollbarHeight)
-        : 0;
-
-    const vTrackColor = this._style.scrollbarTrackColor ?? "#f1f1f1";
-    const vThumbColor =
-      this.isPressedVScrollbar || this.isDraggingScrollbar
-        ? (this._style.scrollbarThumbPressedColor ?? "#6b6b6b")
-        : this.isHoveringVScrollbar
-          ? (this._style.scrollbarThumbHoverColor ?? "#a8a8a8")
-          : (this._style.scrollbarThumbColor ?? "#c1c1c1");
-    const hTrackColor = this._style.scrollbarTrackColor ?? "#f1f1f1";
-    const hThumbColor =
-      this.isPressedHScrollbar || this.isDraggingHorizontalScrollbar
-        ? (this._style.scrollbarThumbPressedColor ?? "#6b6b6b")
-        : this.isHoveringHScrollbar
-          ? (this._style.scrollbarThumbHoverColor ?? "#a8a8a8")
-          : (this._style.scrollbarThumbColor ?? "#c1c1c1");
-
-    // 绘制垂直滚动条
-    if (layout.maxScroll > 0) {
-      ctx.fillStyle = vTrackColor;
-      ctx.fillRect(
-        layout.viewWidth,
-        0,
-        layout.scrollbarWidth,
-        layout.canvasHeight -
-          (layout.hasHorizontalScrollbar
-            ? layout.horizontalScrollbarHeight
-            : 0),
-      );
-
-      ctx.fillStyle = vThumbColor;
-      ctx.beginPath();
-      ctx.roundRect(
-        layout.viewWidth + 2,
-        scrollbarY + 2,
-        layout.scrollbarWidth - 4,
-        scrollbarHeight - 4,
-        4,
-      );
-      ctx.fill();
-    }
-
-    // 绘制水平滚动条
-    if (layout.hasHorizontalScrollbar) {
-      const hScrollbarWidth = Math.max(
-        20,
-        (layout.viewWidth / layout.totalContentWidth) * layout.viewWidth,
-      );
-      const hScrollbarX =
-        layout.maxScrollLeft > 0
-          ? (this.scrollLeft / layout.maxScrollLeft) *
-            (layout.viewWidth - hScrollbarWidth)
-          : 0;
-
-      ctx.fillStyle = hTrackColor;
-      ctx.fillRect(
-        0,
-        layout.canvasHeight - layout.horizontalScrollbarHeight,
-        layout.viewWidth,
-        layout.horizontalScrollbarHeight,
-      );
-
-      ctx.fillStyle = hThumbColor;
-      ctx.beginPath();
-      ctx.roundRect(
-        hScrollbarX + 2,
-        layout.canvasHeight - layout.horizontalScrollbarHeight + 2,
-        hScrollbarWidth - 4,
-        layout.horizontalScrollbarHeight - 4,
-        4,
-      );
-      ctx.fill();
+      gradient.addColorStop(0, "rgba(0, 0, 0, 0)");
+      gradient.addColorStop(1, "rgba(0, 0, 0, 0.08)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(rightShadowX, paddingTop, shadowWidth, shadowHeight);
     }
   }
 
   /**
    * 绘制垂直分隔线
-   * @param ctx Canvas 2D 上下文
-   * @param layout 渲染布局
    */
   private _drawVerticalDividers(
     ctx: CanvasRenderingContext2D,
@@ -1649,19 +1918,28 @@ class VirtualTable {
   ) {
     if (!this._style.showVerticalDividers) return;
 
-    const top = layout.paddingTop;
-    const bottom =
-      layout.canvasHeight -
-      layout.paddingBottom -
-      (layout.hasHorizontalScrollbar ? layout.horizontalScrollbarHeight : 0);
+    const {
+      paddingTop,
+      paddingLeft,
+      canvasHeight,
+      paddingBottom,
+      horizontalScrollbarHeight,
+      viewWidth,
+      paddingRight,
+      rightFixedWidth,
+      leftFixedWidth,
+    } = layout;
+
+    const top = paddingTop;
+    const bottom = canvasHeight - paddingBottom - horizontalScrollbarHeight;
     if (bottom <= top) return;
 
-    const visibleLeft = layout.paddingLeft;
-    const visibleRight =
-      layout.viewWidth - layout.paddingRight - layout.rightFixedWidth;
+    const visibleLeft = paddingLeft;
+    const visibleRight = viewWidth - paddingRight - rightFixedWidth;
     const dividerXSet = new Set<number>();
 
-    let leftX = layout.paddingLeft;
+    // 收集分隔线 X 坐标
+    let leftX = paddingLeft;
     this._columns.forEach((col, i) => {
       if (col.fixed === "left") {
         leftX += layout.columnWidths[i];
@@ -1669,7 +1947,7 @@ class VirtualTable {
       }
     });
 
-    let middleX = layout.paddingLeft + layout.leftFixedWidth - this.scrollLeft;
+    let middleX = paddingLeft + leftFixedWidth - this.scrollLeft;
     this._columns.forEach((col, i) => {
       if (!col.fixed) {
         middleX += layout.columnWidths[i];
@@ -1677,8 +1955,7 @@ class VirtualTable {
       }
     });
 
-    let rightX =
-      layout.viewWidth - layout.paddingRight - layout.rightFixedWidth;
+    let rightX = viewWidth - paddingRight - rightFixedWidth;
     this._columns.forEach((col, i) => {
       if (col.fixed === "right") {
         rightX += layout.columnWidths[i];
@@ -1699,53 +1976,102 @@ class VirtualTable {
   }
 
   /**
+   * 绘制滚动条
+   */
+  private _drawScrollbars(ctx: CanvasRenderingContext2D, layout: RenderLayout) {
+    const info = this._getScrollbarInfo();
+    const scrollbarWidth = layout.scrollbarWidth;
+
+    // 垂直滚动条
+    if (info.hasVScrollbar) {
+      const vTrackColor = this._style.scrollbarTrackColor ?? "#f1f1f1";
+      const vThumbColor =
+        this.isPressedVScrollbar || this.isDraggingVScrollbar
+          ? (this._style.scrollbarThumbPressedColor ?? "#6b6b6b")
+          : this.isHoveringVScrollbar
+            ? (this._style.scrollbarThumbHoverColor ?? "#a8a8a8")
+            : (this._style.scrollbarThumbColor ?? "#c1c1c1");
+
+      // 轨道
+      ctx.fillStyle = vTrackColor;
+      ctx.fillRect(
+        layout.viewWidth,
+        0,
+        scrollbarWidth,
+        info.vScrollbarTrackHeight,
+      );
+
+      // 滑块
+      const scrollbarY = this._calcScrollbarY(info);
+      ctx.fillStyle = vThumbColor;
+      ctx.beginPath();
+      ctx.roundRect(
+        layout.viewWidth + 2,
+        scrollbarY + 2,
+        scrollbarWidth - 4,
+        info.scrollbarHeight - 4,
+        4,
+      );
+      ctx.fill();
+    }
+
+    // 水平滚动条
+    if (info.hasHScrollbar) {
+      const hTrackColor = this._style.scrollbarTrackColor ?? "#f1f1f1";
+      const hThumbColor =
+        this.isPressedHScrollbar || this.isDraggingHScrollbar
+          ? (this._style.scrollbarThumbPressedColor ?? "#6b6b6b")
+          : this.isHoveringHScrollbar
+            ? (this._style.scrollbarThumbHoverColor ?? "#a8a8a8")
+            : (this._style.scrollbarThumbColor ?? "#c1c1c1");
+
+      // 轨道
+      ctx.fillStyle = hTrackColor;
+      ctx.fillRect(
+        0,
+        layout.canvasHeight - scrollbarWidth,
+        layout.viewWidth,
+        scrollbarWidth,
+      );
+
+      // 滑块
+      const scrollbarX = this._calcScrollbarX(info);
+      ctx.fillStyle = hThumbColor;
+      ctx.beginPath();
+      ctx.roundRect(
+        scrollbarX + 2,
+        layout.canvasHeight - scrollbarWidth + 2,
+        info.hScrollbarWidth - 4,
+        scrollbarWidth - 4,
+        4,
+      );
+      ctx.fill();
+    }
+  }
+
+  /**
    * 绘制外边框
-   * @param ctx Canvas 2D 上下文
-   * @param layout 渲染布局
    */
   private _drawOuterBorder(
     ctx: CanvasRenderingContext2D,
     layout: RenderLayout,
   ) {
+    const {
+      paddingTop,
+      paddingLeft,
+      contentWidth,
+      canvasHeight,
+      paddingBottom,
+      horizontalScrollbarHeight,
+    } = layout;
+
     ctx.strokeStyle = this._style.borderColor ?? "#e0e0e0";
     ctx.strokeRect(
-      layout.paddingLeft,
-      layout.paddingTop,
-      layout.contentWidth,
-      layout.canvasHeight -
-        layout.paddingTop -
-        layout.paddingBottom -
-        (layout.hasHorizontalScrollbar ? layout.horizontalScrollbarHeight : 0),
+      paddingLeft,
+      paddingTop,
+      contentWidth,
+      canvasHeight - paddingTop - paddingBottom - horizontalScrollbarHeight,
     );
-  }
-
-  /**
-   * 渲染表格
-   */
-  private _render() {
-    this.ctx ??= this.el.getContext("2d");
-    if (!this.ctx) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    const layout = this._buildRenderLayout();
-    this._layout = layout;
-
-    this.el.style.width = `${layout.canvasWidth}px`;
-    this.el.style.height = `${layout.canvasHeight}px`;
-    this.el.width = layout.canvasWidth * dpr;
-    this.el.height = layout.canvasHeight * dpr;
-
-    this.ctx.scale(dpr, dpr);
-    this.ctx.clearRect(0, 0, layout.canvasWidth, layout.canvasHeight);
-    this.ctx.font =
-      this._style.font ??
-      "14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-    this._drawRows(this.ctx, layout);
-    this._drawHeader(this.ctx, layout);
-    this._drawFixedColumnShadows(this.ctx, layout);
-    this._drawVerticalDividers(this.ctx, layout);
-    this._drawScrollbars(this.ctx, layout);
-    this._drawOuterBorder(this.ctx, layout);
   }
 }
 
