@@ -10,7 +10,6 @@
  */
 
 type TableFixed = "left" | "right";
-type TableColumnType = "text" | "html";
 
 /**
  * 表格列接口
@@ -20,8 +19,6 @@ type TableColumn = {
   key: string;
   /** 列的显示名称 */
   name: string;
-  /** 列类型，默认text */
-  type?: TableColumnType;
   /** 自定义单元格显示值 */
   getValue?: (row: Record<string, any>, index: number) => string;
   /** 列宽（可选） */
@@ -277,7 +274,7 @@ class VirtualTable {
   private _style: TableStyle = {};
   private _cache: Map<number, Record<string, any>> = new Map();
   private _rowHeightCache: Map<number, number> = new Map();
-  private _rowHeightCacheMaxSize = 1000;
+  private _rowHeightCacheMaxSize = 10000;
   private _estimatedRowHeight = 40;
   private _cumulativeHeightCache: Map<number, number> = new Map();
   private _layout: RenderLayout | null = null;
@@ -380,10 +377,10 @@ class VirtualTable {
     const cellPadding = parsePadding(this._style.cellPadding ?? [5, 10]);
     const verticalPadding = cellPadding.top + cellPadding.bottom;
     const fontSize = 14;
-    const baseRowHeight = fontSize + verticalPadding + 10;
+    const baseRowHeight = fontSize + verticalPadding;
 
     if (this._useDynamicRowHeight) {
-      this._estimatedRowHeight = Math.max(200, baseRowHeight);
+      this._estimatedRowHeight = this._style.minRowHeight ?? 40;
     } else {
       this._estimatedRowHeight = this._style.minRowHeight ?? baseRowHeight;
     }
@@ -663,12 +660,16 @@ class VirtualTable {
   /**
    * 获取行高（带缓存和 LRU）
    */
-  private _getRowHeight(rowIndex: number, row: Record<string, any>): number {
+  private _getRowHeight(
+    rowIndex: number,
+    row: Record<string, any>,
+    layout: RenderLayout,
+  ): number {
     if (this._rowHeightCache.has(rowIndex)) {
       return this._rowHeightCache.get(rowIndex)!;
     }
 
-    const colWidths = this._layout?.columnWidths ?? [];
+    const colWidths = layout?.columnWidths ?? [];
     const height = this._calculateRowHeight(row, rowIndex, colWidths);
 
     if (this._rowHeightCache.size >= this._rowHeightCacheMaxSize) {
@@ -680,23 +681,14 @@ class VirtualTable {
   }
 
   /**
-   * 获取平均行高
-   */
-  private _getAvgRowHeight(): number {
-    // 使用固定的预估行高，避免缓存变化导致计算不稳定
-    return this._estimatedRowHeight;
-  }
-
-  /**
    * 获取总内容高度
    */
   private _recalcTotalContentHeight() {
     const { top: paddingTop, bottom: paddingBottom } = parsePadding(
       this._style.tablePadding,
     );
-
     this._totalContentHeight =
-      this._length * this._estimatedRowHeight + paddingTop + paddingBottom;
+      this._getRowTop(this._length) + paddingTop + paddingBottom;
   }
 
   /**
@@ -708,11 +700,33 @@ class VirtualTable {
   }
 
   /**
-   * 获取累积高度（动态行高）- 使用估算值
+   * 获取累积高度（动态行高）- 使用已缓存的行高
    */
   private _getCumulativeHeightDynamic(endIndex: number): number {
     if (endIndex <= 0) return 0;
-    return endIndex * this._estimatedRowHeight;
+
+    // 如果没有缓存数据，使用预估行高
+    if (this._rowHeightCache.size === 0) {
+      return endIndex * this._estimatedRowHeight;
+    }
+
+    // 计算已缓存的累积高度
+    let cachedHeight = 0;
+    let cachedCount = 0;
+
+    // 获取已缓存的行（按索引排序）
+    const cachedIndices = Array.from(this._rowHeightCache.keys())
+      .filter((i) => i < endIndex)
+      .sort((a, b) => a - b);
+
+    for (const idx of cachedIndices) {
+      cachedHeight += this._rowHeightCache.get(idx)!;
+      cachedCount++;
+    }
+
+    // 未缓存的行使用预估行高
+    const uncachedCount = endIndex - cachedCount;
+    return cachedHeight + uncachedCount * this._estimatedRowHeight;
   }
 
   /**
@@ -738,41 +752,34 @@ class VirtualTable {
     if (y < bodyTop || y >= bodyBottom) return -1;
 
     const baseRowHeight = this._estimatedRowHeight;
-    const avgHeight = this._useDynamicRowHeight
-      ? this._getAvgRowHeight()
-      : baseRowHeight;
 
-    const estimatedStartIndex = Math.max(
-      0,
-      Math.floor(this.scrollTop / avgHeight) - 20,
-    );
-    const startIndex = estimatedStartIndex;
+    let startIndex: number;
+    if (this._useDynamicRowHeight && this._rowHeightCache.size > 0) {
+      startIndex = this._findStartIndexByCumulativeHeight(this.scrollTop);
+      startIndex = Math.max(0, startIndex - 50);
+    } else {
+      startIndex = Math.max(0, Math.floor(this.scrollTop / baseRowHeight) - 50);
+    }
+
     const endIndex = Math.min(
       this._length,
-      startIndex + Math.ceil(visibleHeight / avgHeight) + 40,
+      startIndex + Math.ceil(visibleHeight / 20) + 200,
     );
 
     let currentY = bodyTop + this._getRowTop(startIndex) - this.scrollTop;
 
     for (let rowIndex = startIndex; rowIndex < endIndex; rowIndex++) {
-      if (currentY >= bodyBottom) break;
+      if (currentY >= bodyBottom + 200) break;
 
-      let rowHeight: number;
-      if (this._useDynamicRowHeight) {
-        if (currentY + baseRowHeight >= bodyTop) {
-          const row = this._getValue(rowIndex);
-          rowHeight = this._getRowHeight(rowIndex, row);
-        } else {
-          rowHeight = baseRowHeight;
-        }
-      } else {
-        rowHeight = baseRowHeight;
-      }
+      const row = this._getValue(rowIndex);
+      const actualRowHeight = this._useDynamicRowHeight
+        ? this._getRowHeight(rowIndex, row, layout)
+        : baseRowHeight;
 
-      if (y >= currentY && y < currentY + rowHeight) {
+      if (y >= currentY && y < currentY + actualRowHeight) {
         return rowIndex;
       }
-      currentY += rowHeight;
+      currentY += actualRowHeight;
     }
 
     return -1;
@@ -858,7 +865,7 @@ class VirtualTable {
 
   private _buildRenderLayout(): RenderLayout {
     const rowHeight = this._estimatedRowHeight;
-    const minRowHeight = this._style.minRowHeight ?? 40;
+    const minRowHeight = this._style.minRowHeight ?? 35;
     const maxRowHeight = this._style.maxRowHeight ?? 0;
 
     let headerHeight = this._style.headerHeight;
@@ -1284,42 +1291,40 @@ class VirtualTable {
       return null;
     }
 
-    const avgHeight = this._getAvgRowHeight();
     const baseRowHeight = this._estimatedRowHeight;
 
-    // 计算起始索引 - 使用估算值
-    const estimatedStartIndex = Math.max(
-      0,
-      Math.floor(this.scrollTop / avgHeight) - 20,
-    );
-    const startIndex = estimatedStartIndex;
+    let startIndex: number;
+    if (this._useDynamicRowHeight && this._rowHeightCache.size > 0) {
+      startIndex = this._findStartIndexByCumulativeHeight(this.scrollTop);
+      startIndex = Math.max(0, startIndex - 50);
+    } else {
+      startIndex = Math.max(0, Math.floor(this.scrollTop / baseRowHeight) - 50);
+    }
 
-    // 计算起始 Y 坐标
-    const startCumulativeHeight = this._getRowTop(startIndex);
-    let currentY = bodyTop + startCumulativeHeight - this.scrollTop;
+    const visibleHeight =
+      layout.canvasHeight -
+      (layout.hasHorizontalScrollbar ? layout.horizontalScrollbarHeight : 0);
+    const endIndex = Math.min(
+      this._length,
+      startIndex + Math.ceil(visibleHeight / 20) + 200,
+    );
+
+    let currentY = bodyTop + this._getRowTop(startIndex) - this.scrollTop;
 
     let index = -1;
-    for (let rowIndex = startIndex; rowIndex < this._length; rowIndex++) {
-      if (currentY >= bodyBottom) {
+    for (let rowIndex = startIndex; rowIndex < endIndex; rowIndex++) {
+      if (currentY >= bodyBottom + 200) break;
+
+      const row = this._getValue(rowIndex);
+      const actualRowHeight = this._useDynamicRowHeight
+        ? this._getRowHeight(rowIndex, row, layout)
+        : baseRowHeight;
+
+      if (y >= currentY && y < currentY + actualRowHeight) {
+        index = rowIndex;
         break;
       }
-
-      // 与 _drawRows 保持一致：使用 baseRowHeight 判断是否可见
-      if (currentY + baseRowHeight >= bodyTop || !this._useDynamicRowHeight) {
-        const row = this._getValue(rowIndex);
-        const actualRowHeight = this._useDynamicRowHeight
-          ? this._getRowHeight(rowIndex, row)
-          : baseRowHeight;
-
-        // 检查鼠标是否在此行的范围内
-        if (y >= currentY && y < currentY + actualRowHeight) {
-          index = rowIndex;
-          break;
-        }
-        currentY += actualRowHeight;
-      } else {
-        currentY += baseRowHeight;
-      }
+      currentY += actualRowHeight;
     }
 
     if (index < 0 || index >= this._length) {
@@ -1382,35 +1387,26 @@ class VirtualTable {
 
     this._stats.renderCount++;
 
+    const cachedRowCountBefore = this._rowHeightCache.size;
     const layout = this._getLayout();
     this._layout = layout;
 
-    // 设置 Canvas 尺寸（只有改变时才设置，避免触发 ResizeObserver）
-    const dpr = window.devicePixelRatio || 1;
-    const newWidth = layout.canvasWidth * dpr;
-    const newHeight = layout.canvasHeight * dpr;
-    if (this.el.width !== newWidth || this.el.height !== newHeight) {
-      this.el.width = newWidth;
-      this.el.height = newHeight;
-      this.el.style.width = `${layout.canvasWidth}px`;
-      this.el.style.height = `${layout.canvasHeight}px`;
-    }
-
-    this.ctx.scale(dpr, dpr);
-    this.ctx.clearRect(0, 0, layout.canvasWidth, layout.canvasHeight);
-
-    const font =
-      this._style.font ??
-      "14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-    this.ctx.font = font;
-
-    // 绘制
+    // 渲染
     this._drawRows(this.ctx, layout);
     this._drawHeader(this.ctx, layout);
     this._drawFixedColumnShadows(this.ctx, layout);
     this._drawVerticalDividers(this.ctx, layout);
     this._drawScrollbars(this.ctx, layout);
     this._drawOuterBorder(this.ctx, layout);
+
+    // 如果缓存行数变化了，更新总高度和滚动条
+    if (
+      this._useDynamicRowHeight &&
+      this._rowHeightCache.size !== cachedRowCountBefore
+    ) {
+      this._recalcTotalContentHeight();
+      this._invalidateLayout();
+    }
   }
 
   /**
@@ -1424,40 +1420,68 @@ class VirtualTable {
     const bodyTop = paddingTop + headerHeight;
 
     const baseRowHeight = this._estimatedRowHeight;
-    const avgHeight = this._useDynamicRowHeight
-      ? this._getAvgRowHeight()
-      : baseRowHeight;
 
-    const estimatedStartIndex = Math.max(
-      0,
-      Math.floor(this.scrollTop / avgHeight) - 20,
-    );
-    const startIndex = estimatedStartIndex;
+    let startIndex: number;
+    let startY: number;
+
+    if (this._useDynamicRowHeight && this._rowHeightCache.size > 0) {
+      startIndex = this._findStartIndexByCumulativeHeight(this.scrollTop);
+      startIndex = Math.max(0, startIndex - 50);
+      startY = bodyTop + this._getRowTop(startIndex) - this.scrollTop;
+    } else {
+      startIndex = Math.max(0, Math.floor(this.scrollTop / baseRowHeight) - 50);
+      startY = bodyTop + startIndex * baseRowHeight - this.scrollTop;
+    }
 
     const endIndex = Math.min(
       this._length,
-      startIndex + Math.ceil(visibleHeight / avgHeight) + 40,
+      startIndex + Math.ceil(visibleHeight / 20) + 200,
     );
 
-    // 计算起始 Y 坐标
-    let currentY = bodyTop + this._getRowTop(startIndex) - this.scrollTop;
+    let currentY = startY;
 
     for (let rowIndex = startIndex; rowIndex < endIndex; rowIndex++) {
-      if (currentY >= bodyTop + visibleHeight) {
+      if (currentY >= bodyTop + visibleHeight + 200) {
         break;
       }
 
-      if (currentY + baseRowHeight >= bodyTop || !this._useDynamicRowHeight) {
-        const row = this._getValue(rowIndex);
-        const actualRowHeight = this._useDynamicRowHeight
-          ? this._getRowHeight(rowIndex, row)
-          : baseRowHeight;
+      const row = this._getValue(rowIndex);
+      const actualRowHeight = this._useDynamicRowHeight
+        ? this._getRowHeight(rowIndex, row, layout)
+        : baseRowHeight;
+
+      if (
+        currentY + actualRowHeight >= bodyTop - 200 ||
+        !this._useDynamicRowHeight ||
+        currentY + actualRowHeight >= bodyTop
+      ) {
         this._drawRow(ctx, layout, row, rowIndex, currentY, actualRowHeight);
-        currentY += actualRowHeight;
+      }
+      currentY += actualRowHeight;
+    }
+  }
+
+  /**
+   * 根据滚动位置找到起始行索引（二分查找）
+   */
+  private _findStartIndexByCumulativeHeight(scrollTop: number): number {
+    let low = 0;
+    let high = this._length - 1;
+    let result = 0;
+
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const cumulativeHeight = this._getRowTop(mid + 1);
+
+      if (cumulativeHeight <= scrollTop) {
+        low = mid + 1;
       } else {
-        currentY += baseRowHeight;
+        result = mid;
+        high = mid - 1;
       }
     }
+
+    return result;
   }
 
   /**
@@ -2077,7 +2101,6 @@ class VirtualTable {
 
 export {
   type TableFixed,
-  type TableColumnType,
   type TableColumn,
   type RowStyleResolverResult,
   type RowStyleResolver,

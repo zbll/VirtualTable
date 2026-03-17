@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && pnpm exec esbuild src/VirtualTable.ts --bundle --minify --format=esm --outfile=dist/index.js",
+    "build": "tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --minify --format=esm --outfile=dist/index.js && rm -f dist/VirtualTable.js",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",

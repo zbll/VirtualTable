@@ -1,16 +1,18 @@
 # VirtualTable
 
-High-performance Canvas virtual table component with support for rendering millions of rows.
+High-performance Canvas virtual scrolling table component with support for massive datasets (~3 trillion rows).
 
 ## Features
 
-- 🚀 **High Performance**: Canvas-based virtual scrolling, easily handles millions of rows
-- 📱 **Fixed Columns**: Support left/right fixed columns, keeping key columns visible during scroll
+- 🚀 **High Performance**: Canvas-based rendering with virtual scrolling, easily handles massive datasets
+- 📱 **Fixed Columns**: Support for left/right fixed columns, keeping key columns visible during horizontal scroll
+- 📏 **Dynamic Row Height**: Automatically calculates row height based on content
 - 🎨 **Custom Styles**: Rich style configuration options with custom colors, fonts, borders, and more
-- 🖱️ **Interactive Events**: Support hover, click, scroll events
-- 📜 **Custom Cells**: Support custom cell display values and types
+- 🖱️ **Interactive Events**: Support for hover, click, scroll, and other events
+- 📜 **Custom Cell Values**: Support custom cell display values via `getValue` callback
 - 🎯 **Row Style Resolver**: Dynamic row styling based on row data
 - 📦 **Zero Dependencies**: Pure TypeScript implementation, no external dependencies
+- 🔄 **Auto Resize**: Automatic layout recalculation when container size changes
 
 ## Installation
 
@@ -51,7 +53,7 @@ const style: TableStyle = {
 // Create table instance
 const table = new VirtualTable(canvas, {
   columns,
-  length: 100000, // 1 million rows
+  length: 100000, // Support for massive datasets
   valueBuilder: (index) => ({
     id: index,
     name: `User ${index}`,
@@ -60,13 +62,13 @@ const table = new VirtualTable(canvas, {
   style,
 });
 
-// Resize
+// Resize table
 table.resize(800, 600);
 ```
 
-## Using the list Method
+## Using the `list` Method
 
-For smaller datasets, use the `list` method to simplify table creation:
+For smaller datasets, use the `list` static method to simplify table creation:
 
 ```typescript
 const data = [
@@ -85,39 +87,38 @@ const table = VirtualTable.list(canvas, {
 });
 ```
 
-## API
+## API Reference
 
 ### Types
 
 #### TableColumn
 
-Table column configuration
+Table column configuration.
 
 | Property | Type | Required | Description |
 |----------|------|----------|-------------|
 | `key` | `string` | Yes | Unique column identifier |
 | `name` | `string` | Yes | Column display name |
-| `type` | `'text' \| 'html'` | No | Column type, default `text` |
-| `getValue` | `(row, index) => string` | No | Custom cell display value |
-| `width` | `number` | No | Column width |
-| `fixed` | `'left' \| 'right'` | No | Fix column to left or right |
+| `getValue` | `(row, index) => string` | No | Custom cell display value function |
+| `width` | `number` | No | Column width in pixels |
+| `fixed` | `'left' \| 'right'` | No | Fix column to left or right side |
 | `wrap` | `boolean` | No | Whether to enable text wrapping for this column |
 
 #### TableStyle
 
-Table style configuration
+Table style configuration.
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `rowHeight` | `number` | 40 | Row height (minimum row height when using dynamic row height) |
-| `minRowHeight` | `number` | 40 | Minimum row height |
-| `maxRowHeight` | `number` | 0 | Maximum row height (0 means no limit) |
+| `rowHeight` | `number` | 40 | Row height (minimum when using dynamic row height) |
+| `minRowHeight` | `number` | 35 | Minimum row height |
+| `maxRowHeight` | `number` | 0 | Maximum row height (0 = no limit) |
 | `headerHeight` | `number` | 50 | Header height |
-| `font` | `string` | `14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif` | Font |
+| `font` | `string` | `14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif` | Cell font |
 | `headerFont` | `string` | `bold 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif` | Header font |
 | `headerBackgroundColor` | `string` | `#f5f5f5` | Header background color |
 | `rowBackgroundColor` | `string` | `#ffffff` | Row background color |
-| `rowAltBackgroundColor` | `string` | `#fafafa` | Alternate row background color |
+| `rowAltBackgroundColor` | `string` | `#fafafa` | Alternate row background color (odd rows) |
 | `textColor` | `string` | `#333333` | Text color |
 | `textAlign` | `'left' \| 'right' \| 'center'` | `left` | Text alignment |
 | `borderColor` | `string` | `#e0e0e0` | Border color |
@@ -126,7 +127,7 @@ Table style configuration
 | `horizontalDividerColor` | `string` | `#f0f0f0` | Horizontal divider color |
 | `horizontalDividerWidth` | `number` | 1 | Horizontal divider width |
 | `rowHoverBackgroundColor` | `string` | `#f5f5f5` | Row hover background color |
-| `scrollbarWidth` | `number` | 12 | Scrollbar width |
+| `scrollbarWidth` | `number` | 12 | Scrollbar width in pixels |
 | `scrollbarTrackColor` | `string` | `#f1f1f1` | Scrollbar track color |
 | `scrollbarThumbColor` | `string` | `#c1c1c1` | Scrollbar thumb color |
 | `scrollbarThumbHoverColor` | `string` | `#a8a8a8` | Scrollbar thumb hover color |
@@ -134,15 +135,28 @@ Table style configuration
 | `tablePadding` | `PaddingValue` | 0 | Table padding |
 | `cellPadding` | `PaddingValue` | `[5, 10]` | Cell padding |
 | `headerCellPadding` | `PaddingValue` | `[5, 10]` | Header cell padding |
-| `showVerticalDividers` | `boolean` | false | Show vertical dividers |
-| `maxCellLines` | `number` | 0 | Maximum number of lines for cells (0 means no limit) |
-| `rowStyleResolver` | `(row, index) => RowStyleResolverResult` | - | Row style resolver |
+| `showVerticalDividers` | `boolean` | false | Show vertical dividers between columns |
+| `maxCellLines` | `number` | 0 | Maximum number of lines for cells (0 = no limit) |
+| `rowStyleResolver` | `(row, index) => RowStyleResolverResult` | - | Row style resolver function |
+
+#### RowStyleResolverResult
+
+Result type for row style resolver.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `backgroundColor` | `string` | Row background color |
+| `hoverBackgroundColor` | `string` | Row hover background color |
+| `textColor` | `string` | Text color |
+| `textAlign` | `CanvasTextAlign` | Text alignment |
+| `borderColor` | `string` | Border color |
+| `font` | `string` | Font |
 
 #### PaddingValue
 
-Padding value type, supports the following formats:
+Padding value type supports the following formats:
 
-- `number`: Same for all sides
+- `number`: Same padding for all sides
 - `[number, number]`: Vertical, horizontal
 - `[number, number, number]`: Top, horizontal, bottom
 - `[number, number, number, number]`: Top, right, bottom, left
@@ -151,25 +165,25 @@ Padding value type, supports the following formats:
 
 #### constructor(el: HTMLCanvasElement, options?: TableOptions)
 
-Create a VirtualTable instance.
+Creates a VirtualTable instance.
 
 **Parameters:**
 - `el`: HTMLCanvasElement - The canvas element to render the table
 - `options`: TableOptions - Table configuration options
-  - `columns`: TableColumn[] - Column configuration
-  - `length`: number - Number of rows
+  - `columns`: TableColumn[] - Column configuration array
+  - `length`: number - Number of rows (max: ~3 trillion)
   - `valueBuilder`: (index: number) => Record<string, any> - Function to generate row data
   - `style`: TableStyle - Table style configuration (optional)
   - `dynamicRowHeight`: boolean - Enable dynamic row height (default: true)
 
 #### static list(el: HTMLCanvasElement, options: VirtualTableCreateOptions)
 
-Static method, create table using array data.
+Static method to create table using array data.
 
 **Parameters:**
 - `el`: HTMLCanvasElement - The canvas element to render the table
 - `options`: VirtualTableCreateOptions - Table creation options
-  - `columns`: TableColumn[] - Column configuration
+  - `columns`: TableColumn[] - Column configuration array
   - `values`: Record<string, any>[] - Array of row data
   - `style`: TableStyle - Table style configuration (optional)
   - `dynamicRowHeight`: boolean - Enable dynamic row height (default: true)
@@ -178,7 +192,7 @@ Static method, create table using array data.
 
 #### setValues(length: number, valueBuilder: ValueBuilder)
 
-Set table data.
+Updates table data.
 
 **Parameters:**
 - `length`: number - Number of rows
@@ -186,46 +200,46 @@ Set table data.
 
 #### setColumns(columns: TableColumn[])
 
-Set table columns.
+Updates table columns.
 
 **Parameters:**
 - `columns`: TableColumn[] - Column configuration array
 
 #### setStyle(style: TableStyle)
 
-Set table style.
+Updates table style.
 
 **Parameters:**
 - `style`: TableStyle - Table style configuration
 
 #### setDynamicRowHeight(enabled: boolean)
 
-Enable or disable dynamic row height.
+Enables or disables dynamic row height.
 
 **Parameters:**
 - `enabled`: boolean - Whether to enable dynamic row height
 
 #### getRowHeightCache(): Map<number, number>
 
-Get row height cache.
+Gets the row height cache.
 
-**Returns:** Map<number, number> - Row index to height mapping
+**Returns:** Map<number, number> - Mapping of row index to height
 
 #### clearRowHeightCache()
 
-Clear row height cache.
+Clears the row height cache and triggers re-render.
 
 #### resize(width?: number, height?: number)
 
-Resize table.
+Resizes the table.
 
 **Parameters:**
-- `width`: number - Table width (optional)
-- `height`: number - Table height (optional)
+- `width`: number - Table width in pixels (optional)
+- `height`: number - Table height in pixels (optional)
 
 #### scrollTo(scrollTop?: number, scrollLeft?: number)
 
-Scroll to specified position.
+Scrolls to specified position.
 
 **Parameters:**
 - `scrollTop`: number - Vertical scroll position (optional)
@@ -233,7 +247,7 @@ Scroll to specified position.
 
 #### scrollToRow(rowIndex: number, align: "top" | "center" | "bottom" = "top")
 
-Scroll to specified row with alignment.
+Scrolls to specified row with alignment.
 
 **Parameters:**
 - `rowIndex`: number - Row index to scroll to
@@ -241,107 +255,94 @@ Scroll to specified row with alignment.
 
 #### addEventListener<T extends VirtualTableEventType>(type: T, listener: VirtualTableEventHandlerMap[T])
 
-Add event listener.
+Adds an event listener.
 
 **Parameters:**
 - `type`: VirtualTableEventType - Event type
-- `listener`: Event listener function
+- `listener`: VirtualTableEventHandlerMap[T] - Event listener function
 
 #### removeEventListener<T extends VirtualTableEventType>(type: T, listener: VirtualTableEventHandlerMap[T])
 
-Remove event listener.
+Removes an event listener.
 
 **Parameters:**
 - `type`: VirtualTableEventType - Event type
-- `listener`: Event listener function to remove
+- `listener`: VirtualTableEventHandlerMap[T] - Event listener function to remove
 
-### Events
+### Event Methods
 
 #### onHover(listener: (row: Record<string, any>, index: number) => void)
 
-Listen to hover events.
+Registers hover event listener.
 
 **Parameters:**
-- `row`: Record<string, any> - Hovered row data
-- `index`: number - Hovered row index
+- `listener`: (row, index) => void - Callback function
+  - `row`: Record<string, any> - Hovered row data
+  - `index`: number - Hovered row index
 
 #### onClick(listener: (row: Record<string, any>, index: number) => void)
 
-Listen to click events.
+Registers click event listener.
 
 **Parameters:**
-- `row`: Record<string, any> - Clicked row data
-- `index`: number - Clicked row index
+- `listener`: (row, index) => void - Callback function
+  - `row`: Record<string, any> - Clicked row data
+  - `index`: number - Clicked row index
 
 #### onScroll(listener: (scrollTop: number, scrollLeft: number) => void)
 
-Listen to scroll events.
+Registers scroll event listener.
 
 **Parameters:**
-- `scrollTop`: number - Current vertical scroll position
-- `scrollLeft`: number - Current horizontal scroll position
+- `listener`: (scrollTop, scrollLeft) => void - Callback function
+  - `scrollTop`: number - Current vertical scroll position
+  - `scrollLeft`: number - Current horizontal scroll position
 
 #### onTableCreated(listener: () => void)
 
-Listen to table created event.
+Registers table created event listener.
 
 #### onRowCreated(listener: (row: Record<string, any>, index: number) => void)
 
-Listen to row created event.
+Registers row created event listener.
 
 **Parameters:**
-- `row`: Record<string, any> - Created row data
-- `index`: number - Created row index
+- `listener`: (row, index) => void - Callback function
+  - `row`: Record<string, any> - Created row data
+  - `index`: number - Created row index
 
 #### onRowHeightChanged(listener: (index: number, height: number) => void)
 
-Listen to row height changed event.
+Registers row height changed event listener.
 
 **Parameters:**
-- `index`: number - Row index whose height changed
-- `height`: number - New row height
+- `listener`: (index, height) => void - Callback function
+  - `index`: number - Row index whose height changed
+  - `height`: number - New row height
 
 #### offHover(listener: (row: Record<string, any>, index: number) => void)
 
-Remove hover event listener.
-
-**Parameters:**
-- `listener`: The hover event listener to remove
+Removes hover event listener.
 
 #### offClick(listener: (row: Record<string, any>, index: number) => void)
 
-Remove click event listener.
-
-**Parameters:**
-- `listener`: The click event listener to remove
+Removes click event listener.
 
 #### offScroll(listener: (scrollTop: number, scrollLeft: number) => void)
 
-Remove scroll event listener.
-
-**Parameters:**
-- `listener`: The scroll event listener to remove
+Removes scroll event listener.
 
 #### offTableCreated(listener: () => void)
 
-Remove table created event listener.
-
-**Parameters:**
-- `listener`: The table created event listener to remove
+Removes table created event listener.
 
 #### offRowCreated(listener: (row: Record<string, any>, index: number) => void)
 
-Remove row created event listener.
-
-**Parameters:**
-- `listener`: The row created event listener to remove
+Removes row created event listener.
 
 #### offRowHeightChanged(listener: (index: number, height: number) => void)
 
-Remove row height changed event listener.
-
-**Parameters:**
-- `listener`: The row height changed event listener to remove
+Removes row height changed event listener.
 
 ## Examples
 
@@ -400,24 +401,55 @@ const columns: TableColumn[] = [
   {
     key: 'status',
     name: 'Status',
-    getValue: (row) => row.status ? '✅ Enabled' : '❌ Disabled',
+    getValue: (row) => row.status ? 'Enabled' : 'Disabled',
   },
 ];
+```
+
+### Text Wrapping Example
+
+```typescript
+const columns: TableColumn[] = [
+  { key: 'id', name: 'ID', width: 80 },
+  { key: 'description', name: 'Description', width: 300, wrap: true },
+];
+
+const style: TableStyle = {
+  maxCellLines: 3, // Limit to 3 lines
+};
+
+const table = new VirtualTable(canvas, {
+  columns,
+  length: 1000,
+  valueBuilder: (i) => ({
+    id: i,
+    description: `This is a long description for item ${i} that might wrap to multiple lines.`,
+  }),
+  style,
+});
 ```
 
 ## Performance Optimization
 
 ### Data Caching
 
-VirtualTable has a built-in data caching mechanism with a default threshold of 10,000 rows. When the cache is full, it automatically clears old cache.
+VirtualTable has a built-in data caching mechanism with automatic cache management. The cache automatically clears old entries when it reaches the maximum size (10,000 rows by default).
 
 ### Virtual Scrolling
 
-Only renders rows within the visible area, ensuring smooth scrolling even with millions of rows.
+Only renders rows within the visible area plus a small buffer, ensuring smooth scrolling even with massive datasets. The component uses efficient algorithms to calculate visible row ranges.
+
+### Dynamic Row Height
+
+When enabled, row heights are calculated based on content (text wrapping). Heights are cached for performance, with automatic cache invalidation when styles change.
 
 ### Scrollbar Optimization
 
-Scrollbars are drawn using Canvas with customizable styles including track color, thumb color, hover state, and more.
+Scrollbars are drawn using Canvas with customizable styles including track color, thumb color, hover state, pressed state, and more. Smooth drag interactions are supported.
+
+### Binary Search
+
+Uses binary search algorithm to quickly find the starting row index based on scroll position when using dynamic row heights.
 
 ## Browser Support
 
