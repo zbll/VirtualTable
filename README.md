@@ -1,6 +1,10 @@
 # VirtualTable
 
-High-performance Canvas virtual scrolling table component with support for massive datasets (~3 trillion rows).
+High-performance Canvas virtual scrolling table component with support for massive datasets (~million rows).
+
+## Language
+English
+[中文](README-zh.md)
 
 ## Features
 

@@ -1,6 +1,10 @@
 # VirtualTable
 
-高性能 Canvas 虚拟滚动表格组件，支持海量数据渲染（约 3 万亿行）。
+高性能 Canvas 虚拟滚动表格组件，支持海量数据渲染（约 百万行）。
+
+## Language
+[English](README.md)
+中文
 
 ## 特性
 
@@ -95,62 +99,62 @@ const table = VirtualTable.list(canvas, {
 
 表格列配置。
 
-| 属性 | 类型 | 必填 | 描述 |
-|------|------|------|------|
-| `key` | `string` | 是 | 列的唯一标识符 |
-| `name` | `string` | 是 | 列的显示名称 |
-| `getValue` | `(row, index) => string` | 否 | 自定义单元格显示值函数 |
-| `width` | `number` | 否 | 列宽（像素） |
-| `fixed` | `'left' \| 'right'` | 否 | 将列固定在左侧或右侧 |
-| `wrap` | `boolean` | 否 | 是否启用该列的文本换行 |
+| 属性         | 类型                       | 必填 | 描述          |
+| ---------- | ------------------------ | -- | ----------- |
+| `key`      | `string`                 | 是  | 列的唯一标识符     |
+| `name`     | `string`                 | 是  | 列的显示名称      |
+| `getValue` | `(row, index) => string` | 否  | 自定义单元格显示值函数 |
+| `width`    | `number`                 | 否  | 列宽（像素）      |
+| `fixed`    | `'left' \| 'right'`      | 否  | 将列固定在左侧或右侧  |
+| `wrap`     | `boolean`                | 否  | 是否启用该列的文本换行 |
 
 #### TableStyle
 
 表格样式配置。
 
-| 属性 | 类型 | 默认值 | 描述 |
-|------|------|--------|------|
-| `rowHeight` | `number` | 40 | 行高（使用动态行高时为最小行高） |
-| `minRowHeight` | `number` | 35 | 最小行高 |
-| `maxRowHeight` | `number` | 0 | 最大行高（0 表示无限制） |
-| `headerHeight` | `number` | 50 | 表头高度 |
-| `font` | `string` | `14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif` | 单元格字体 |
-| `headerFont` | `string` | `bold 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif` | 表头字体 |
-| `headerBackgroundColor` | `string` | `#f5f5f5` | 表头背景色 |
-| `rowBackgroundColor` | `string` | `#ffffff` | 行背景色 |
-| `rowAltBackgroundColor` | `string` | `#fafafa` | 交替行背景色（奇数行） |
-| `textColor` | `string` | `#333333` | 文本颜色 |
-| `textAlign` | `'left' \| 'right' \| 'center'` | `left` | 文本对齐方式 |
-| `borderColor` | `string` | `#e0e0e0` | 边框颜色 |
-| `verticalDividerColor` | `string` | `#f0f0f0` | 垂直分隔线颜色 |
-| `verticalDividerWidth` | `number` | 1 | 垂直分隔线宽度 |
-| `horizontalDividerColor` | `string` | `#f0f0f0` | 水平分隔线颜色 |
-| `horizontalDividerWidth` | `number` | 1 | 水平分隔线宽度 |
-| `rowHoverBackgroundColor` | `string` | `#f5f5f5` | 行悬停背景色 |
-| `scrollbarWidth` | `number` | 12 | 滚动条宽度（像素） |
-| `scrollbarTrackColor` | `string` | `#f1f1f1` | 滚动条轨道颜色 |
-| `scrollbarThumbColor` | `string` | `#c1c1c1` | 滚动条滑块颜色 |
-| `scrollbarThumbHoverColor` | `string` | `#a8a8a8` | 滚动条滑块悬停颜色 |
-| `scrollbarThumbPressedColor` | `string` | `#6b6b6b` | 滚动条滑块按下颜色 |
-| `tablePadding` | `PaddingValue` | 0 | 表格内边距 |
-| `cellPadding` | `PaddingValue` | `[5, 10]` | 单元格内边距 |
-| `headerCellPadding` | `PaddingValue` | `[5, 10]` | 表头单元格内边距 |
-| `showVerticalDividers` | `boolean` | false | 显示列之间的垂直分隔线 |
-| `maxCellLines` | `number` | 0 | 单元格最大行数（0 表示无限制） |
-| `rowStyleResolver` | `(row, index) => RowStyleResolverResult` | - | 行样式解析器函数 |
+| 属性                           | 类型                                       | 默认值                                                                           | 描述               |
+| ---------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------- | ---------------- |
+| `rowHeight`                  | `number`                                 | 40                                                                            | 行高（使用动态行高时为最小行高） |
+| `minRowHeight`               | `number`                                 | 35                                                                            | 最小行高             |
+| `maxRowHeight`               | `number`                                 | 0                                                                             | 最大行高（0 表示无限制）    |
+| `headerHeight`               | `number`                                 | 50                                                                            | 表头高度             |
+| `font`                       | `string`                                 | `14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`      | 单元格字体            |
+| `headerFont`                 | `string`                                 | `bold 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif` | 表头字体             |
+| `headerBackgroundColor`      | `string`                                 | `#f5f5f5`                                                                     | 表头背景色            |
+| `rowBackgroundColor`         | `string`                                 | `#ffffff`                                                                     | 行背景色             |
+| `rowAltBackgroundColor`      | `string`                                 | `#fafafa`                                                                     | 交替行背景色（奇数行）      |
+| `textColor`                  | `string`                                 | `#333333`                                                                     | 文本颜色             |
+| `textAlign`                  | `'left' \| 'right' \| 'center'`          | `left`                                                                        | 文本对齐方式           |
+| `borderColor`                | `string`                                 | `#e0e0e0`                                                                     | 边框颜色             |
+| `verticalDividerColor`       | `string`                                 | `#f0f0f0`                                                                     | 垂直分隔线颜色          |
+| `verticalDividerWidth`       | `number`                                 | 1                                                                             | 垂直分隔线宽度          |
+| `horizontalDividerColor`     | `string`                                 | `#f0f0f0`                                                                     | 水平分隔线颜色          |
+| `horizontalDividerWidth`     | `number`                                 | 1                                                                             | 水平分隔线宽度          |
+| `rowHoverBackgroundColor`    | `string`                                 | `#f5f5f5`                                                                     | 行悬停背景色           |
+| `scrollbarWidth`             | `number`                                 | 12                                                                            | 滚动条宽度（像素）        |
+| `scrollbarTrackColor`        | `string`                                 | `#f1f1f1`                                                                     | 滚动条轨道颜色          |
+| `scrollbarThumbColor`        | `string`                                 | `#c1c1c1`                                                                     | 滚动条滑块颜色          |
+| `scrollbarThumbHoverColor`   | `string`                                 | `#a8a8a8`                                                                     | 滚动条滑块悬停颜色        |
+| `scrollbarThumbPressedColor` | `string`                                 | `#6b6b6b`                                                                     | 滚动条滑块按下颜色        |
+| `tablePadding`               | `PaddingValue`                           | 0                                                                             | 表格内边距            |
+| `cellPadding`                | `PaddingValue`                           | `[5, 10]`                                                                     | 单元格内边距           |
+| `headerCellPadding`          | `PaddingValue`                           | `[5, 10]`                                                                     | 表头单元格内边距         |
+| `showVerticalDividers`       | `boolean`                                | false                                                                         | 显示列之间的垂直分隔线      |
+| `maxCellLines`               | `number`                                 | 0                                                                             | 单元格最大行数（0 表示无限制） |
+| `rowStyleResolver`           | `(row, index) => RowStyleResolverResult` | -                                                                             | 行样式解析器函数         |
 
 #### RowStyleResolverResult
 
 行样式解析器返回结果类型。
 
-| 属性 | 类型 | 描述 |
-|------|------|------|
-| `backgroundColor` | `string` | 行背景色 |
-| `hoverBackgroundColor` | `string` | 行悬停背景色 |
-| `textColor` | `string` | 文本颜色 |
-| `textAlign` | `CanvasTextAlign` | 文本对齐方式 |
-| `borderColor` | `string` | 边框颜色 |
-| `font` | `string` | 字体 |
+| 属性                     | 类型                | 描述     |
+| ---------------------- | ----------------- | ------ |
+| `backgroundColor`      | `string`          | 行背景色   |
+| `hoverBackgroundColor` | `string`          | 行悬停背景色 |
+| `textColor`            | `string`          | 文本颜色   |
+| `textAlign`            | `CanvasTextAlign` | 文本对齐方式 |
+| `borderColor`          | `string`          | 边框颜色   |
+| `font`                 | `string`          | 字体     |
 
 #### PaddingValue
 
@@ -168,11 +172,12 @@ const table = VirtualTable.list(canvas, {
 创建 VirtualTable 实例。
 
 **参数：**
+
 - `el`: HTMLCanvasElement - 用于渲染表格的 canvas 元素
 - `options`: TableOptions - 表格配置选项
-  - `columns`: TableColumn[] - 列配置数组
+  - `columns`: TableColumn\[] - 列配置数组
   - `length`: number - 行数（最大约 3 万亿）
-  - `valueBuilder`: (index: number) => Record<string, any> - 生成行数据的函数
+  - `valueBuilder`: (index: number) => Record\<string, any> - 生成行数据的函数
   - `style`: TableStyle - 表格样式配置（可选）
   - `dynamicRowHeight`: boolean - 启用动态行高（默认 true）
 
@@ -181,10 +186,11 @@ const table = VirtualTable.list(canvas, {
 静态方法，使用数组数据创建表格。
 
 **参数：**
+
 - `el`: HTMLCanvasElement - 用于渲染表格的 canvas 元素
 - `options`: VirtualTableCreateOptions - 表格创建选项
-  - `columns`: TableColumn[] - 列配置数组
-  - `values`: Record<string, any>[] - 行数据数组
+  - `columns`: TableColumn\[] - 列配置数组
+  - `values`: Record\<string, any>\[] - 行数据数组
   - `style`: TableStyle - 表格样式配置（可选）
   - `dynamicRowHeight`: boolean - 启用动态行高（默认 true）
 
@@ -195,21 +201,24 @@ const table = VirtualTable.list(canvas, {
 更新表格数据。
 
 **参数：**
-- `length`: number - 行数
-- `valueBuilder`: (index: number) => Record<string, any> - 生成行数据的函数
 
-#### setColumns(columns: TableColumn[])
+- `length`: number - 行数
+- `valueBuilder`: (index: number) => Record\<string, any> - 生成行数据的函数
+
+#### setColumns(columns: TableColumn\[])
 
 更新表格列。
 
 **参数：**
-- `columns`: TableColumn[] - 列配置数组
+
+- `columns`: TableColumn\[] - 列配置数组
 
 #### setStyle(style: TableStyle)
 
 更新表格样式。
 
 **参数：**
+
 - `style`: TableStyle - 表格样式配置
 
 #### setDynamicRowHeight(enabled: boolean)
@@ -217,13 +226,14 @@ const table = VirtualTable.list(canvas, {
 启用或禁用动态行高。
 
 **参数：**
+
 - `enabled`: boolean - 是否启用动态行高
 
-#### getRowHeightCache(): Map<number, number>
+#### getRowHeightCache(): Map\<number, number>
 
 获取行高缓存。
 
-**返回：** Map<number, number> - 行索引到高度的映射
+**返回：** Map\<number, number> - 行索引到高度的映射
 
 #### clearRowHeightCache()
 
@@ -234,6 +244,7 @@ const table = VirtualTable.list(canvas, {
 调整表格大小。
 
 **参数：**
+
 - `width`: number - 表格宽度（像素，可选）
 - `height`: number - 表格高度（像素，可选）
 
@@ -242,6 +253,7 @@ const table = VirtualTable.list(canvas, {
 滚动到指定位置。
 
 **参数：**
+
 - `scrollTop`: number - 垂直滚动位置（可选）
 - `scrollLeft`: number - 水平滚动位置（可选）
 
@@ -250,43 +262,48 @@ const table = VirtualTable.list(canvas, {
 滚动到指定行并对齐。
 
 **参数：**
+
 - `rowIndex`: number - 要滚动到的行索引
 - `align`: "top" | "center" | "bottom" - 在视口中的对齐方式（默认 "top"）
 
-#### addEventListener<T extends VirtualTableEventType>(type: T, listener: VirtualTableEventHandlerMap[T])
+#### addEventListener<T extends VirtualTableEventType>(type: T, listener: VirtualTableEventHandlerMap\[T])
 
 添加事件监听器。
 
 **参数：**
-- `type`: VirtualTableEventType - 事件类型
-- `listener`: VirtualTableEventHandlerMap[T] - 事件监听器函数
 
-#### removeEventListener<T extends VirtualTableEventType>(type: T, listener: VirtualTableEventHandlerMap[T])
+- `type`: VirtualTableEventType - 事件类型
+- `listener`: VirtualTableEventHandlerMap\[T] - 事件监听器函数
+
+#### removeEventListener<T extends VirtualTableEventType>(type: T, listener: VirtualTableEventHandlerMap\[T])
 
 移除事件监听器。
 
 **参数：**
+
 - `type`: VirtualTableEventType - 事件类型
-- `listener`: VirtualTableEventHandlerMap[T] - 要移除的事件监听器函数
+- `listener`: VirtualTableEventHandlerMap\[T] - 要移除的事件监听器函数
 
 ### 事件方法
 
-#### onHover(listener: (row: Record<string, any>, index: number) => void)
+#### onHover(listener: (row: Record\<string, any>, index: number) => void)
 
 注册悬停事件监听器。
 
 **参数：**
+
 - `listener`: (row, index) => void - 回调函数
-  - `row`: Record<string, any> - 悬停的行数据
+  - `row`: Record\<string, any> - 悬停的行数据
   - `index`: number - 悬停的行索引
 
-#### onClick(listener: (row: Record<string, any>, index: number) => void)
+#### onClick(listener: (row: Record\<string, any>, index: number) => void)
 
 注册点击事件监听器。
 
 **参数：**
+
 - `listener`: (row, index) => void - 回调函数
-  - `row`: Record<string, any> - 点击的行数据
+  - `row`: Record\<string, any> - 点击的行数据
   - `index`: number - 点击的行索引
 
 #### onScroll(listener: (scrollTop: number, scrollLeft: number) => void)
@@ -294,6 +311,7 @@ const table = VirtualTable.list(canvas, {
 注册滚动事件监听器。
 
 **参数：**
+
 - `listener`: (scrollTop, scrollLeft) => void - 回调函数
   - `scrollTop`: number - 当前垂直滚动位置
   - `scrollLeft`: number - 当前水平滚动位置
@@ -302,13 +320,14 @@ const table = VirtualTable.list(canvas, {
 
 注册表格创建完成事件监听器。
 
-#### onRowCreated(listener: (row: Record<string, any>, index: number) => void)
+#### onRowCreated(listener: (row: Record\<string, any>, index: number) => void)
 
 注册行创建事件监听器。
 
 **参数：**
+
 - `listener`: (row, index) => void - 回调函数
-  - `row`: Record<string, any> - 创建的行数据
+  - `row`: Record\<string, any> - 创建的行数据
   - `index`: number - 创建的行索引
 
 #### onRowHeightChanged(listener: (index: number, height: number) => void)
@@ -316,15 +335,16 @@ const table = VirtualTable.list(canvas, {
 注册行高变化事件监听器。
 
 **参数：**
+
 - `listener`: (index, height) => void - 回调函数
   - `index`: number - 高度变化的行索引
   - `height`: number - 新的行高
 
-#### offHover(listener: (row: Record<string, any>, index: number) => void)
+#### offHover(listener: (row: Record\<string, any>, index: number) => void)
 
 移除悬停事件监听器。
 
-#### offClick(listener: (row: Record<string, any>, index: number) => void)
+#### offClick(listener: (row: Record\<string, any>, index: number) => void)
 
 移除点击事件监听器。
 
@@ -336,7 +356,7 @@ const table = VirtualTable.list(canvas, {
 
 移除表格创建完成事件监听器。
 
-#### offRowCreated(listener: (row: Record<string, any>, index: number) => void)
+#### offRowCreated(listener: (row: Record\<string, any>, index: number) => void)
 
 移除行创建事件监听器。
 
